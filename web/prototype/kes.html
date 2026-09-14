@@ -1,7 +1,19 @@
 <title>Kès Nexa POS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script>
+// La feuille de style des polices est injectée après coup, jamais posée en
+// <link> bloquant : sur une connexion lente, un <link> vers un hôte externe
+// retient le premier rendu de toute la page. Ici la caisse s'affiche
+// immédiatement dans la pile de secours, et les polices se substituent quand
+// elles arrivent (display=swap). Si elles n'arrivent jamais, rien ne casse.
+(function(){
+  var l = document.createElement("link");
+  l.rel = "stylesheet";
+  l.href = "https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap";
+  document.head.appendChild(l);
+})();
+</script>
 <style>
 :root{
   --ground:#F6F8F7;
@@ -165,14 +177,14 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--brand);outline-
 .rm:hover{color:var(--danger)}
 .noline{padding:34px 14px;text-align:center;color:var(--ink-faint);font-size:14px}
 
-.totals{padding:12px 14px;border-top:1px solid var(--line);display:grid;gap:5px}
+.totals{padding:12px 14px;border-top:1px solid var(--line);display:grid;gap:5px;min-width:0}
 .trow{display:flex;justify-content:space-between;font-size:13.5px;color:var(--ink-muted)}
 .trow.grand{
   margin-top:7px;padding-top:10px;border-top:1px solid var(--line-strong);
   color:var(--ink);font-size:16px;font-weight:600;align-items:baseline;
 }
-.trow.grand .money{font-size:26px;font-weight:600}
-.alt{font-size:12.5px;color:var(--ink-faint);text-align:right;margin-top:-2px}
+.trow.grand .money{font-size:26px;font-weight:600;white-space:nowrap}
+.alt{font-size:12.5px;color:var(--ink-faint);text-align:right;margin-top:-2px;overflow-wrap:anywhere}
 
 .pay{
   margin:0 14px 14px;padding:15px;border-radius:10px;border:0;width:calc(100% - 28px);
@@ -554,7 +566,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--brand);outline-
     $("#tax").textContent = cart.length ? fmt(t.tax) : "—";
     $("#tot").textContent = cart.length ? fmt(t.tot) : "—";
     $("#alt").textContent = cart.length && unit !== "USD"
-      ? "≈ " + fmtUsd(htgToUsd(t.tot)) + " nan to jodi a"
+      ? "≈ " + fmtUsd(htgToUsd(t.tot))
       : (cart.length ? "≈ " + fmtHtgPlain(t.tot) : "");
     $("#paybtn").disabled = !cart.length;
     $("#paybtn").textContent = cart.length ? ("Peye  " + fmt(t.tot)) : "Peye";
