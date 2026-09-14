@@ -1,0 +1,821 @@
+<title>Kès Nexa POS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F6F8F7;
+  --surface:#FFFFFF;
+  --surface-sunk:#EDF1EF;
+  --ink:#0F1A17;
+  --ink-muted:#5B6B66;
+  --ink-faint:#8A9A94;
+  --line:#DCE5E1;
+  --line-strong:#C3D0CB;
+  --brand:#00875A;
+  --brand-bright:#00B87C;
+  --brand-wash:#E4F4EC;
+  --usd:#3730A3;
+  --usd-wash:#E8E7F7;
+  --warn:#B45309;
+  --warn-wash:#FBEEDC;
+  --danger:#B91C1C;
+  --shadow:0 1px 2px rgba(15,26,23,.06),0 8px 24px -12px rgba(15,26,23,.18);
+  --shadow-lift:0 2px 4px rgba(15,26,23,.08),0 18px 44px -16px rgba(15,26,23,.30);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0C1412;
+    --surface:#141F1C;
+    --surface-sunk:#0F1916;
+    --ink:#E8F0EC;
+    --ink-muted:#93A59E;
+    --ink-faint:#6B7D77;
+    --line:#22322D;
+    --line-strong:#2E423B;
+    --brand:#2FD39B;
+    --brand-bright:#00B87C;
+    --brand-wash:#102C22;
+    --usd:#A9A4F5;
+    --usd-wash:#1D1B3A;
+    --warn:#E0A356;
+    --warn-wash:#33230F;
+    --danger:#F0776F;
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px -12px rgba(0,0,0,.7);
+    --shadow-lift:0 2px 4px rgba(0,0,0,.6),0 18px 44px -16px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0C1412; --surface:#141F1C; --surface-sunk:#0F1916;
+  --ink:#E8F0EC; --ink-muted:#93A59E; --ink-faint:#6B7D77;
+  --line:#22322D; --line-strong:#2E423B;
+  --brand:#2FD39B; --brand-bright:#00B87C; --brand-wash:#102C22;
+  --usd:#A9A4F5; --usd-wash:#1D1B3A;
+  --warn:#E0A356; --warn-wash:#33230F; --danger:#F0776F;
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px -12px rgba(0,0,0,.7);
+  --shadow-lift:0 2px 4px rgba(0,0,0,.6),0 18px 44px -16px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--ground); color:var(--ink);
+  font-family:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:15px; line-height:1.45; margin:0;
+  -webkit-font-smoothing:antialiased;
+}
+.money{font-family:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible,input:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.lbl{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint)}
+
+/* ---------- shell ---------- */
+.shell{max-width:1340px;margin:0 auto;padding-inline:16px;padding-block:14px 28px}
+
+/* ---------- header ---------- */
+.bar{
+  display:flex;flex-wrap:wrap;gap:12px;align-items:center;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;box-shadow:var(--shadow);
+}
+.brandmark{display:flex;align-items:center;gap:10px;margin-right:auto}
+.nf{
+  width:34px;height:34px;border-radius:9px;display:grid;place-items:center;flex:none;
+  background:var(--brand);color:#fff;font-weight:700;font-size:13px;letter-spacing:.02em;
+}
+:root[data-theme="dark"] .nf,html:not([data-theme="light"]) .nf{color:#07211a}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .nf{color:#fff}}
+.shopname{font-weight:600;line-height:1.15}
+.shopmeta{font-size:12.5px;color:var(--ink-muted)}
+
+.pill{
+  display:inline-flex;align-items:center;gap:7px;flex:none;
+  border:1px solid var(--line);border-radius:999px;padding:6px 12px;
+  font-size:13px;font-weight:500;background:var(--surface-sunk);
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--brand);flex:none}
+.pill.off{background:var(--warn-wash);border-color:transparent;color:var(--warn);font-weight:600}
+.pill.off .dot{background:var(--warn);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pill.off .dot{animation:none}}
+
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex:none}
+.seg button{padding:6px 11px;font-size:13px;font-weight:500;color:var(--ink-muted);background:var(--surface)}
+.seg button[aria-pressed="true"]{background:var(--brand);color:#fff}
+.seg button+button{border-left:1px solid var(--line)}
+
+/* ---------- layout ---------- */
+.work{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:16px;margin-top:16px;align-items:start}
+@media (max-width:980px){.work{grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- catalogue ---------- */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.searchrow{display:flex;gap:10px;padding:12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.search{
+  flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:9px;
+  background:var(--surface-sunk);border:1px solid var(--line);border-radius:9px;padding:9px 12px;
+}
+.search input{border:0;background:none;flex:1;min-width:0;font:inherit;color:inherit}
+.search input::placeholder{color:var(--ink-faint)}
+.scan{
+  flex:none;border:1px dashed var(--line-strong);border-radius:9px;padding:9px 13px;
+  font-size:13px;font-weight:600;color:var(--ink-muted);background:var(--surface-sunk);
+}
+.chips{display:flex;gap:7px;padding:11px 12px;overflow-x:auto;border-bottom:1px solid var(--line)}
+.chip{
+  flex:none;border:1px solid var(--line);border-radius:999px;padding:5px 13px;
+  font-size:13px;font-weight:500;color:var(--ink-muted);background:var(--surface);
+}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;padding:12px}
+.item{
+  display:flex;flex-direction:column;gap:6px;text-align:left;
+  border:1px solid var(--line);border-radius:10px;padding:11px 12px 12px;
+  background:var(--surface);transition:border-color .12s,transform .12s;
+}
+.item:hover{border-color:var(--brand)}
+.item:active{transform:scale(.978)}
+.item .nm{font-weight:600;font-size:14.5px;line-height:1.25;text-wrap:balance}
+.item .sz{font-size:12px;color:var(--ink-faint);margin-top:-3px}
+.item .pr{margin-top:auto;font-size:16px;font-weight:600;color:var(--brand)}
+.item .stk{font-size:11.5px;color:var(--ink-faint)}
+.item .stk.low{color:var(--warn);font-weight:600}
+.item .stk.neg{color:var(--danger);font-weight:600}
+.tca0{
+  align-self:flex-start;font-size:10px;font-weight:600;letter-spacing:.05em;
+  background:var(--surface-sunk);color:var(--ink-faint);border-radius:4px;padding:1px 5px;
+}
+.empty{padding:40px 16px;text-align:center;color:var(--ink-faint);grid-column:1/-1}
+
+/* ---------- ticket ---------- */
+.ticket{position:sticky;top:14px;display:flex;flex-direction:column;max-height:calc(100vh - 28px)}
+@media (max-width:980px){.ticket{position:static;max-height:none}}
+.thead{display:flex;align-items:baseline;gap:8px;padding:13px 14px;border-bottom:1px solid var(--line)}
+.tno{margin-left:auto;font-size:13px;color:var(--ink-faint)}
+.lines{overflow-y:auto;flex:1;min-height:96px}
+.line{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:11px 14px;border-bottom:1px solid var(--line)}
+.line .nm{font-weight:500;font-size:14.5px}
+.line .amt{font-size:14.5px;font-weight:600;align-self:center}
+.line .sub{font-size:12.5px;color:var(--ink-muted);display:flex;align-items:center;gap:8px}
+.qty{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.qty button{width:26px;height:24px;display:grid;place-items:center;font-size:15px;color:var(--ink-muted);background:var(--surface-sunk)}
+.qty button:hover{color:var(--ink)}
+.qty span{min-width:30px;text-align:center;font-size:13px;font-weight:600}
+.rm{color:var(--ink-faint);font-size:12.5px;text-decoration:underline;text-underline-offset:2px}
+.rm:hover{color:var(--danger)}
+.noline{padding:34px 14px;text-align:center;color:var(--ink-faint);font-size:14px}
+
+.totals{padding:12px 14px;border-top:1px solid var(--line);display:grid;gap:5px}
+.trow{display:flex;justify-content:space-between;font-size:13.5px;color:var(--ink-muted)}
+.trow.grand{
+  margin-top:7px;padding-top:10px;border-top:1px solid var(--line-strong);
+  color:var(--ink);font-size:16px;font-weight:600;align-items:baseline;
+}
+.trow.grand .money{font-size:26px;font-weight:600}
+.alt{font-size:12.5px;color:var(--ink-faint);text-align:right;margin-top:-2px}
+
+.pay{
+  margin:0 14px 14px;padding:15px;border-radius:10px;border:0;width:calc(100% - 28px);
+  background:var(--brand);color:#fff;font-size:17px;font-weight:600;letter-spacing:.01em;
+  display:flex;justify-content:center;align-items:center;gap:10px;
+}
+.pay:disabled{background:var(--surface-sunk);color:var(--ink-faint);cursor:not-allowed}
+.pay:not(:disabled):hover{background:var(--brand-bright)}
+
+/* ---------- queue strip ---------- */
+.queue{
+  display:flex;align-items:center;gap:10px;margin-top:14px;padding:11px 14px;
+  border-radius:10px;background:var(--warn-wash);color:var(--warn);
+  font-size:13.5px;font-weight:500;border:1px solid transparent;
+}
+.queue b{font-weight:700}
+
+/* ---------- modal ---------- */
+.veil{
+  position:fixed;inset:0;background:rgba(9,18,15,.55);backdrop-filter:blur(2px);
+  display:grid;place-items:end center;padding:16px;z-index:40;
+}
+@media (min-width:700px){.veil{place-items:center}}
+.modal{
+  background:var(--surface);border-radius:14px;width:100%;max-width:470px;
+  box-shadow:var(--shadow-lift);max-height:92vh;overflow-y:auto;
+}
+.mhead{padding:16px 18px 13px;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;gap:12px}
+.mhead h2{margin:0;font-size:17px;font-weight:600}
+.x{margin-left:auto;font-size:22px;line-height:1;color:var(--ink-faint);padding:0 4px}
+.due{padding:16px 18px;background:var(--surface-sunk);display:flex;justify-content:space-between;align-items:baseline}
+.due .money{font-size:28px;font-weight:600}
+.mbody{padding:16px 18px;display:grid;gap:15px}
+.meth{display:grid;gap:8px}
+.mrow{display:flex;gap:8px;flex-wrap:wrap}
+.quick{
+  flex:1 1 84px;border:1px solid var(--line);border-radius:9px;padding:11px 8px;
+  font-weight:600;font-size:14.5px;background:var(--surface);
+}
+.quick:hover{border-color:var(--brand);color:var(--brand)}
+.quick.usd:hover{border-color:var(--usd);color:var(--usd)}
+.tender{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;background:var(--brand-wash)}
+.tender.isusd{background:var(--usd-wash)}
+.tender .tag{
+  font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:2px 7px;border-radius:4px;
+  background:var(--brand);color:#fff;flex:none;
+}
+.tender.isusd .tag{background:var(--usd)}
+.tender .conv{font-size:12.5px;color:var(--ink-muted);margin-left:auto;text-align:right}
+.tender .drop{color:var(--ink-faint);font-size:17px;line-height:1;padding:0 2px}
+.tender .drop:hover{color:var(--danger)}
+.rate{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  font-size:12.5px;color:var(--ink-muted);padding:9px 12px;
+  border:1px dashed var(--line-strong);border-radius:9px;
+}
+.settle{border-top:1px solid var(--line);padding:14px 18px;display:grid;gap:10px}
+.sline{display:flex;justify-content:space-between;font-size:14.5px}
+.sline.rest{color:var(--warn);font-weight:600}
+.sline.chg{color:var(--brand);font-weight:600}
+.confirm{
+  padding:15px;border-radius:10px;background:var(--brand);color:#fff;
+  font-size:16.5px;font-weight:600;width:100%;
+}
+.confirm:disabled{background:var(--surface-sunk);color:var(--ink-faint);cursor:not-allowed}
+.confirm:not(:disabled):hover{background:var(--brand-bright)}
+
+/* ---------- receipt toast ---------- */
+.toast{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:50;
+  background:var(--ink);color:var(--ground);border-radius:11px;padding:13px 18px;
+  box-shadow:var(--shadow-lift);display:flex;align-items:center;gap:14px;
+  max-width:calc(100vw - 32px);font-size:14px;
+}
+.toast .no{font-weight:600}
+.toast .sep{width:1px;height:22px;background:currentColor;opacity:.25}
+
+.note{
+  margin-top:20px;padding:14px 16px;border-radius:10px;
+  border:1px solid var(--line);background:var(--surface);
+  font-size:13.5px;color:var(--ink-muted);line-height:1.55;
+}
+.note b{color:var(--ink);font-weight:600}
+</style>
+
+<div class="shell">
+  <header class="bar">
+    <div class="brandmark">
+      <div class="nf">NF</div>
+      <div>
+        <div class="shopname">Ti Machann Delmas 33</div>
+        <div class="shopmeta">CAISSE-1 · Mirlande J. · louvri 7:12 AM</div>
+      </div>
+    </div>
+
+    <button class="pill" id="net" aria-live="polite">
+      <span class="dot"></span><span id="netlabel">Anliy</span>
+    </button>
+
+    <div class="seg" role="group" aria-label="Inite afichaj">
+      <button data-unit="HTG" aria-pressed="true">Goud</button>
+      <button data-unit="HTD5" aria-pressed="false">Dola ayisyen</button>
+      <button data-unit="USD" aria-pressed="false">USD</button>
+    </div>
+  </header>
+
+  <div class="work">
+    <section class="panel">
+      <div class="searchrow">
+        <label class="search">
+          <span aria-hidden="true" style="color:var(--ink-faint)">⌕</span>
+          <input id="q" type="search" placeholder="Chèche yon atik oswa tape kòd la…" autocomplete="off">
+        </label>
+        <button class="scan" id="scan">Eskane</button>
+      </div>
+      <div class="chips" id="cats" role="group" aria-label="Kategori"></div>
+      <div class="grid" id="grid"></div>
+    </section>
+
+    <aside class="panel ticket">
+      <div class="thead">
+        <strong>Tikè a</strong>
+        <span class="tno money" id="tno">DELMAS-000148</span>
+      </div>
+      <div class="lines" id="lines"></div>
+      <div class="totals">
+        <div class="trow"><span>Sou-total (san taks)</span><span class="money" id="sub">—</span></div>
+        <div class="trow"><span>TCA 10%</span><span class="money" id="tax">—</span></div>
+        <div class="trow grand"><span>Total</span><span class="money" id="tot">—</span></div>
+        <div class="alt" id="alt"></div>
+      </div>
+      <button class="pay" id="paybtn" disabled>Peye</button>
+    </aside>
+  </div>
+
+  <div class="queue" id="queue" hidden>
+    <span aria-hidden="true">⇅</span>
+    <span><b id="qn">0</b> vant nan fil la — y ap voye otomatikman lè koneksyon an tounen.</span>
+  </div>
+
+  <p class="note">
+    <b>Pwototip.</b> Ekran sa a pa konekte ak sèvè a — men tout kalkil yo se menm yo ki nan
+    <code>CheckoutService</code> la : dekonpozisyon TCA sou yon pri TTC, plizyè deviz sou yon sèl
+    vant, to chanj jele sou chak peman, monnen randi an goud. Eseye : ajoute atik, klike
+    <b>Peye</b>, epi peye yon pati an dola. Klike <b>Anliy</b> pou wè sa k pase lè koneksyon an koupe.
+  </p>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- aritmetik: menm lojik ak PHP la ---------- */
+  // Pri yo estoke an santim. Pa gen flotan sou lajan, janmen.
+  var RATE_SCALE = 1e8;
+  var fxRate = 13250000000;           // 132.50 HTG pou 1 USD, echèl 8
+  var BP = 10000;
+
+  function proportion(minor, num, den){
+    var mag = Math.floor((Math.abs(minor) * num * 2 + den) / (den * 2));
+    return minor < 0 ? -mag : mag;
+  }
+  // Pri TTC → baz + taks. Awondisman an tonbe sou TAKS la, pa sou baz la,
+  // konsa sòm liy yo tonbe egzakteman sou total yo ankese a.
+  function splitTax(ttc, rateBp){
+    if(!rateBp) return {base:ttc, tax:0};
+    var base = proportion(ttc, BP, BP + rateBp);
+    return {base:base, tax:ttc - base};
+  }
+  function usdToHtg(usdMinor){ return Math.round(usdMinor * fxRate / RATE_SCALE); }
+  function htgToUsd(htgMinor){ return Math.round(htgMinor * RATE_SCALE / fxRate); }
+
+  /* ---------- afichaj ---------- */
+  var unit = "HTG";
+  function fmt(htgMinor){
+    if(unit === "USD"){
+      var u = htgToUsd(htgMinor);
+      return "$" + (u/100).toFixed(2);
+    }
+    var m = unit === "HTD5" ? Math.round(htgMinor/5) : htgMinor;
+    var s = (Math.abs(m)/100).toFixed(2).replace(".", ",");
+    s = s.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    return (m<0?"-":"") + s + (unit === "HTD5" ? " D" : " G");
+  }
+  function fmtUsd(usdMinor){ return "$" + (usdMinor/100).toFixed(2); }
+  function fmtHtgPlain(htgMinor){
+    return (htgMinor/100).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g," ") + " G";
+  }
+
+  /* ---------- katalòg ---------- */
+  var CATS = ["Tout","Manje","Bwason","Kay","Materyèl"];
+  var STOCK = {};
+  var PRODUCTS = [
+    {id:"riz",  n:"Diri Tchako",   s:"sak 5 lb",   p:37500, c:"Manje",     t:0,    q:42},
+    {id:"pwa",  n:"Pwa nwa",       s:"1 lb",       p:14500, c:"Manje",     t:0,    q:31},
+    {id:"mayi", n:"Mayi moulen",   s:"3 lb",       p:15000, c:"Manje",     t:0,    q:18},
+    {id:"spa",  n:"Spaghetti",     s:"200 g",      p:6000,  c:"Manje",     t:0,    q:64},
+    {id:"lwil", n:"Lwil",          s:"1 L",        p:42500, c:"Manje",     t:1000, q:12},
+    {id:"sik",  n:"Sik ble",       s:"2 lb",       p:12500, c:"Manje",     t:0,    q:27},
+    {id:"mamba",n:"Mamba",         s:"pòt 350 g",  p:25000, c:"Manje",     t:1000, q:9},
+    {id:"aran", n:"Aransò",        s:"inite",      p:7500,  c:"Manje",     t:0,    q:55},
+    {id:"let",  n:"Lèt an poud",   s:"400 g",      p:55000, c:"Manje",     t:1000, q:6},
+    {id:"toto", n:"Biskwit Toto",  s:"paket",      p:2500,  c:"Manje",     t:1000, q:120},
+    {id:"kola", n:"Kola Kouwòn",   s:"50 cl",      p:5000,  c:"Bwason",    t:1000, q:88},
+    {id:"pres", n:"Prestij",       s:"33 cl",      p:10000, c:"Bwason",    t:1000, q:46},
+    {id:"dlo",  n:"Dlo trete",     s:"5 galon",    p:9000,  c:"Bwason",    t:0,    q:23},
+    {id:"kafe", n:"Kafe moulen",   s:"250 g",      p:22500, c:"Bwason",    t:1000, q:14},
+    {id:"savon",n:"Savon lesiv",   s:"bar",        p:4500,  c:"Kay",       t:1000, q:73},
+    {id:"chab", n:"Chabon",        s:"sak",        p:50000, c:"Kay",       t:0,    q:8},
+    {id:"bouji",n:"Bouji",         s:"paket 6",    p:7500,  c:"Kay",       t:1000, q:35},
+    {id:"klor", n:"Klowòks",       s:"1 L",        p:11000, c:"Kay",       t:1000, q:19},
+    {id:"siman",n:"Siman",         s:"sak 42,5 kg",p:75000, c:"Materyèl",  t:1000, q:4},
+    {id:"klou", n:"Klou 3 pous",   s:"1 lb",       p:9500,  c:"Materyèl",  t:1000, q:26},
+    {id:"fil",  n:"Fil elektrik",  s:"mèt",        p:6500,  c:"Materyèl",  t:1000, q:60},
+    {id:"pent", n:"Penti blan",    s:"1 galon",    p:135000,c:"Materyèl",  t:1000, q:3}
+  ];
+  PRODUCTS.forEach(function(p){ STOCK[p.id] = p.q; });
+
+  /* ---------- eta ---------- */
+  var cart = [];            // {id, qty}
+  var cat = "Tout";
+  var query = "";
+  var online = true;
+  var queued = 0;
+  var ticketNo = 148;
+  var tenders = [];         // {method, cur, minor}
+
+  var $ = function(s){ return document.querySelector(s); };
+
+  /* ---------- katalòg: rann ---------- */
+  var catsEl = $("#cats");
+  CATS.forEach(function(c){
+    var b = document.createElement("button");
+    b.className = "chip"; b.textContent = c;
+    b.setAttribute("aria-pressed", String(c === cat));
+    b.addEventListener("click", function(){
+      cat = c;
+      [].forEach.call(catsEl.children, function(x){
+        x.setAttribute("aria-pressed", String(x.textContent === c));
+      });
+      renderGrid();
+    });
+    catsEl.appendChild(b);
+  });
+
+  function renderGrid(){
+    var g = $("#grid");
+    g.textContent = "";
+    var list = PRODUCTS.filter(function(p){
+      var okCat = cat === "Tout" || p.c === cat;
+      var okQ = !query || (p.n + " " + p.s).toLowerCase().indexOf(query.toLowerCase()) >= 0;
+      return okCat && okQ;
+    });
+
+    if(!list.length){
+      var e = document.createElement("p");
+      e.className = "empty";
+      e.textContent = "Pa gen atik ki matche « " + query + " ».";
+      g.appendChild(e);
+      return;
+    }
+
+    list.forEach(function(p){
+      var left = STOCK[p.id];
+      var b = document.createElement("button");
+      b.className = "item";
+      b.type = "button";
+
+      var nm = document.createElement("span"); nm.className = "nm"; nm.textContent = p.n;
+      var sz = document.createElement("span"); sz.className = "sz"; sz.textContent = p.s;
+      b.appendChild(nm); b.appendChild(sz);
+
+      if(!p.t){
+        var tg = document.createElement("span");
+        tg.className = "tca0"; tg.textContent = "SAN TCA";
+        b.appendChild(tg);
+      }
+
+      var pr = document.createElement("span");
+      pr.className = "pr money"; pr.textContent = fmt(p.p);
+      b.appendChild(pr);
+
+      var st = document.createElement("span");
+      st.className = "stk" + (left < 0 ? " neg" : left <= 5 ? " low" : "");
+      st.textContent = left < 0 ? ("Stòk " + left + " — gen yon ekà")
+                     : left <= 5 ? ("Rete " + left + " sèlman")
+                     : (left + " an stòk");
+      b.appendChild(st);
+
+      b.addEventListener("click", function(){ add(p.id); });
+      g.appendChild(b);
+    });
+  }
+
+  /* ---------- tikè ---------- */
+  function add(id){
+    var row = cart.filter(function(r){ return r.id === id; })[0];
+    if(row){ row.qty++; } else { cart.push({id:id, qty:1}); }
+    STOCK[id]--;
+    renderAll();
+  }
+  function bump(id, d){
+    var row = cart.filter(function(r){ return r.id === id; })[0];
+    if(!row) return;
+    if(row.qty + d <= 0){ return drop(id); }
+    row.qty += d; STOCK[id] -= d;
+    renderAll();
+  }
+  function drop(id){
+    var row = cart.filter(function(r){ return r.id === id; })[0];
+    if(!row) return;
+    STOCK[id] += row.qty;
+    cart = cart.filter(function(r){ return r.id !== id; });
+    renderAll();
+  }
+  function product(id){ return PRODUCTS.filter(function(p){ return p.id === id; })[0]; }
+
+  function totals(){
+    var sub = 0, tax = 0, tot = 0;
+    cart.forEach(function(r){
+      var p = product(r.id);
+      var lineTtc = p.p * r.qty;
+      var s = splitTax(lineTtc, p.t);
+      sub += s.base; tax += s.tax; tot += lineTtc;
+    });
+    return {sub:sub, tax:tax, tot:tot};
+  }
+
+  function renderTicket(){
+    var el = $("#lines");
+    el.textContent = "";
+
+    if(!cart.length){
+      var n = document.createElement("p");
+      n.className = "noline";
+      n.textContent = "Klike sou yon atik pou kòmanse.";
+      el.appendChild(n);
+    } else {
+      cart.forEach(function(r){
+        var p = product(r.id);
+        var line = document.createElement("div"); line.className = "line";
+
+        var nm = document.createElement("div"); nm.className = "nm";
+        nm.textContent = p.n + " · " + p.s;
+
+        var amt = document.createElement("div"); amt.className = "amt money";
+        amt.textContent = fmt(p.p * r.qty);
+
+        var sub = document.createElement("div"); sub.className = "sub";
+
+        var q = document.createElement("span"); q.className = "qty";
+        var minus = document.createElement("button");
+        minus.type = "button"; minus.textContent = "−";
+        minus.setAttribute("aria-label", "Retire youn " + p.n);
+        minus.addEventListener("click", function(){ bump(r.id, -1); });
+        var cnt = document.createElement("span"); cnt.className = "money"; cnt.textContent = r.qty;
+        var plus = document.createElement("button");
+        plus.type = "button"; plus.textContent = "+";
+        plus.setAttribute("aria-label", "Ajoute youn " + p.n);
+        plus.addEventListener("click", function(){ bump(r.id, 1); });
+        q.appendChild(minus); q.appendChild(cnt); q.appendChild(plus);
+
+        var unitPr = document.createElement("span");
+        unitPr.className = "money"; unitPr.textContent = "× " + fmt(p.p);
+
+        var rm = document.createElement("button");
+        rm.type = "button"; rm.className = "rm"; rm.textContent = "Retire";
+        rm.addEventListener("click", function(){ drop(r.id); });
+
+        sub.appendChild(q); sub.appendChild(unitPr); sub.appendChild(rm);
+
+        line.appendChild(nm); line.appendChild(amt); line.appendChild(sub);
+        el.appendChild(line);
+      });
+    }
+
+    var t = totals();
+    $("#sub").textContent = cart.length ? fmt(t.sub) : "—";
+    $("#tax").textContent = cart.length ? fmt(t.tax) : "—";
+    $("#tot").textContent = cart.length ? fmt(t.tot) : "—";
+    $("#alt").textContent = cart.length && unit !== "USD"
+      ? "≈ " + fmtUsd(htgToUsd(t.tot)) + " nan to jodi a"
+      : (cart.length ? "≈ " + fmtHtgPlain(t.tot) : "");
+    $("#paybtn").disabled = !cart.length;
+    $("#paybtn").textContent = cart.length ? ("Peye  " + fmt(t.tot)) : "Peye";
+    $("#tno").textContent = "DELMAS-" + String(ticketNo).padStart(6, "0");
+  }
+
+  function renderAll(){ renderGrid(); renderTicket(); }
+
+  /* ---------- inite afichaj ---------- */
+  [].forEach.call(document.querySelectorAll("[data-unit]"), function(b){
+    b.addEventListener("click", function(){
+      unit = b.dataset.unit;
+      [].forEach.call(document.querySelectorAll("[data-unit]"), function(x){
+        x.setAttribute("aria-pressed", String(x === b));
+      });
+      renderAll();
+      if(document.querySelector(".veil")) renderModal();
+    });
+  });
+
+  /* ---------- koneksyon ---------- */
+  $("#net").addEventListener("click", function(){
+    online = !online;
+    this.className = "pill" + (online ? "" : " off");
+    $("#netlabel").textContent = online ? "Anliy" : "San koneksyon";
+    if(online && queued){ queued = 0; }
+    syncQueue();
+  });
+  function syncQueue(){
+    $("#queue").hidden = queued === 0;
+    $("#qn").textContent = queued;
+  }
+
+  /* ---------- rechèch ---------- */
+  $("#q").addEventListener("input", function(){ query = this.value; renderGrid(); });
+  $("#scan").addEventListener("click", function(){
+    var pool = PRODUCTS.filter(function(p){ return STOCK[p.id] > 0; });
+    add(pool[Math.floor(Math.random()*pool.length)].id);
+  });
+
+  /* ---------- peman ---------- */
+  var veil = null;
+
+  function openPay(){
+    tenders = [];
+    veil = document.createElement("div");
+    veil.className = "veil";
+    veil.addEventListener("click", function(e){ if(e.target === veil) closePay(); });
+    document.body.appendChild(veil);
+    renderModal();
+    document.addEventListener("keydown", onEsc);
+  }
+  function closePay(){
+    if(veil){ veil.remove(); veil = null; }
+    document.removeEventListener("keydown", onEsc);
+  }
+  function onEsc(e){ if(e.key === "Escape") closePay(); }
+
+  function collected(){
+    return tenders.reduce(function(a, t){
+      return a + (t.cur === "USD" ? usdToHtg(t.minor) : t.minor);
+    }, 0);
+  }
+
+  function renderModal(){
+    if(!veil) return;
+    var t = totals();
+    var got = collected();
+    var rest = Math.max(0, t.tot - got);
+    var change = Math.max(0, got - t.tot);
+
+    veil.textContent = "";
+    var m = document.createElement("div");
+    m.className = "modal"; m.setAttribute("role","dialog"); m.setAttribute("aria-modal","true");
+
+    /* tèt */
+    var h = document.createElement("div"); h.className = "mhead";
+    var h2 = document.createElement("h2"); h2.textContent = "Ankese vant lan";
+    var x = document.createElement("button");
+    x.className = "x"; x.type = "button"; x.textContent = "×";
+    x.setAttribute("aria-label","Fèmen");
+    x.addEventListener("click", closePay);
+    h.appendChild(h2); h.appendChild(x);
+    m.appendChild(h);
+
+    /* montan dwe */
+    var due = document.createElement("div"); due.className = "due";
+    var dl = document.createElement("span"); dl.className = "lbl"; dl.textContent = "Kliyan an dwe";
+    var dv = document.createElement("span"); dv.className = "money"; dv.textContent = fmt(t.tot);
+    due.appendChild(dl); due.appendChild(dv);
+    m.appendChild(due);
+
+    var body = document.createElement("div"); body.className = "mbody";
+
+    /* to chanj */
+    var rate = document.createElement("div"); rate.className = "rate";
+    var rl = document.createElement("span");
+    rl.textContent = "To jodi a — jele sou chak peman";
+    var rv = document.createElement("strong"); rv.className = "money";
+    rv.textContent = "1 USD = " + (fxRate/RATE_SCALE).toFixed(2).replace(".", ",") + " G";
+    rate.appendChild(rl); rate.appendChild(rv);
+    body.appendChild(rate);
+
+    /* bouton rapid */
+    function methodBlock(label, cls, items){
+      var wrap = document.createElement("div"); wrap.className = "meth";
+      var l = document.createElement("span"); l.className = "lbl"; l.textContent = label;
+      var row = document.createElement("div"); row.className = "mrow";
+      items.forEach(function(it){
+        var b = document.createElement("button");
+        b.type = "button"; b.className = "quick" + (cls ? " " + cls : "");
+        b.textContent = it.label;
+        b.addEventListener("click", it.act);
+        row.appendChild(b);
+      });
+      wrap.appendChild(l); wrap.appendChild(row);
+      return wrap;
+    }
+
+    function addTender(method, cur, minor){
+      if(minor <= 0) return;
+      tenders.push({method:method, cur:cur, minor:minor});
+      renderModal();
+    }
+
+    body.appendChild(methodBlock("Kach an goud", "", [
+      {label:"Egzak", act:function(){ addTender("CASH","HTG", Math.max(0, t.tot - collected())); }},
+      {label:"500 G",  act:function(){ addTender("CASH","HTG", 50000); }},
+      {label:"1 000 G",act:function(){ addTender("CASH","HTG", 100000); }},
+      {label:"2 000 G",act:function(){ addTender("CASH","HTG", 200000); }}
+    ]));
+
+    body.appendChild(methodBlock("Kach an dola", "usd", [
+      {label:"$5",  act:function(){ addTender("CASH","USD", 500); }},
+      {label:"$10", act:function(){ addTender("CASH","USD", 1000); }},
+      {label:"$20", act:function(){ addTender("CASH","USD", 2000); }},
+      {label:"$50", act:function(){ addTender("CASH","USD", 5000); }}
+    ]));
+
+    body.appendChild(methodBlock("Lajan mobil", "", [
+      {label:"MonCash", act:function(){ addTender("MONCASH","HTG", Math.max(0, t.tot - collected())); }},
+      {label:"NatCash", act:function(){ addTender("NATCASH","HTG", Math.max(0, t.tot - collected())); }}
+    ]));
+
+    /* peman ki deja antre */
+    if(tenders.length){
+      var list = document.createElement("div"); list.className = "meth";
+      var ll = document.createElement("span"); ll.className = "lbl";
+      ll.textContent = "Sa ki resevwa";
+      list.appendChild(ll);
+
+      tenders.forEach(function(td, i){
+        var row = document.createElement("div");
+        row.className = "tender" + (td.cur === "USD" ? " isusd" : "");
+
+        var tag = document.createElement("span"); tag.className = "tag";
+        tag.textContent = td.cur === "USD" ? "USD" : (td.method === "CASH" ? "GOUD" : td.method);
+
+        var amt = document.createElement("strong"); amt.className = "money";
+        amt.textContent = td.cur === "USD" ? fmtUsd(td.minor) : fmtHtgPlain(td.minor);
+
+        var conv = document.createElement("span"); conv.className = "conv money";
+        conv.textContent = td.cur === "USD"
+          ? ("= " + fmtHtgPlain(usdToHtg(td.minor)) + "  @ " + (fxRate/RATE_SCALE).toFixed(2))
+          : "";
+
+        var rmb = document.createElement("button");
+        rmb.type = "button"; rmb.className = "drop"; rmb.textContent = "×";
+        rmb.setAttribute("aria-label","Retire peman sa a");
+        rmb.addEventListener("click", function(){
+          tenders.splice(i,1); renderModal();
+        });
+
+        row.appendChild(tag); row.appendChild(amt);
+        if(conv.textContent) row.appendChild(conv);
+        row.appendChild(rmb);
+        list.appendChild(row);
+      });
+      body.appendChild(list);
+    }
+
+    m.appendChild(body);
+
+    /* rezilta */
+    var settle = document.createElement("div"); settle.className = "settle";
+
+    if(rest > 0){
+      var r1 = document.createElement("div"); r1.className = "sline rest";
+      var r1a = document.createElement("span"); r1a.textContent = "Rete pou peye";
+      var r1b = document.createElement("span"); r1b.className = "money"; r1b.textContent = fmtHtgPlain(rest);
+      r1.appendChild(r1a); r1.appendChild(r1b);
+      settle.appendChild(r1);
+    } else {
+      var r2 = document.createElement("div"); r2.className = "sline chg";
+      var r2a = document.createElement("span"); r2a.textContent = "Monnen pou rann (an goud)";
+      var r2b = document.createElement("span"); r2b.className = "money"; r2b.textContent = fmtHtgPlain(change);
+      r2.appendChild(r2a); r2.appendChild(r2b);
+      settle.appendChild(r2);
+    }
+
+    var ok = document.createElement("button");
+    ok.type = "button"; ok.className = "confirm";
+    ok.disabled = rest > 0 || !tenders.length;
+    ok.textContent = online ? "Fini vant lan" : "Fini vant lan (kenbe lokal)";
+    ok.addEventListener("click", complete);
+    settle.appendChild(ok);
+
+    m.appendChild(settle);
+    veil.appendChild(m);
+  }
+
+  /* ---------- fini ---------- */
+  function complete(){
+    var t = totals();
+    var got = collected();
+    var change = Math.max(0, got - t.tot);
+    var no = "DELMAS-" + String(ticketNo).padStart(6,"0");
+
+    ticketNo++;
+    cart = [];
+    if(!online){ queued++; syncQueue(); }
+    closePay();
+    renderAll();
+    toast(no, t.tot, change);
+  }
+
+  var toastTimer = null;
+  function toast(no, total, change){
+    var old = document.querySelector(".toast");
+    if(old) old.remove();
+    if(toastTimer) clearTimeout(toastTimer);
+
+    var el = document.createElement("div");
+    el.className = "toast"; el.setAttribute("role","status");
+
+    var a = document.createElement("span"); a.className = "no money"; a.textContent = no;
+    var s1 = document.createElement("span"); s1.className = "sep";
+    var b = document.createElement("span"); b.className = "money"; b.textContent = fmtHtgPlain(total);
+    el.appendChild(a); el.appendChild(s1); el.appendChild(b);
+
+    if(change > 0){
+      var s2 = document.createElement("span"); s2.className = "sep";
+      var c = document.createElement("span");
+      c.textContent = "monnen " + fmtHtgPlain(change);
+      el.appendChild(s2); el.appendChild(c);
+    }
+    if(!online){
+      var s3 = document.createElement("span"); s3.className = "sep";
+      var d = document.createElement("span"); d.textContent = "kenbe lokal";
+      el.appendChild(s3); el.appendChild(d);
+    }
+
+    document.body.appendChild(el);
+    toastTimer = setTimeout(function(){ el.remove(); }, 4200);
+  }
+
+  $("#paybtn").addEventListener("click", openPay);
+
+  /* ---------- eta inisyal: yon tikè k ap travay ---------- */
+  cart = [{id:"riz", qty:1}, {id:"kola", qty:3}, {id:"savon", qty:2}];
+  cart.forEach(function(r){ STOCK[r.id] -= r.qty; });
+  renderAll();
+})();
+</script>
