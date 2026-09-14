@@ -1,0 +1,10 @@
+/vendor
+/node_modules
+/.env
+/.env.*
+!/.env.example
+/storage/*.key
+/public/build
+/public/hot
+.DS_Store
+*.log
