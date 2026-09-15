@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\ExchangeRateController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\SyncConflictController;
 use App\Support\Http\ApiResponse;
 use Illuminate\Support\Facades\DB;
@@ -86,6 +87,24 @@ Route::middleware('auth.token')->group(function (): void {
             ->middleware('can.do:session.close');
         Route::get('cashier-sessions/{session}/report', [CashierSessionController::class, 'report'])
             ->middleware('can.do:session.read');
+
+        /* ---------- abonnement ---------- */
+        // L'abonnement en cours et le catalogue sont lisibles par tout
+        // membre : un caissier a le droit de savoir si la caisse est suspendue.
+        Route::get('subscription', [SubscriptionController::class, 'current']);
+        Route::get('plans', [SubscriptionController::class, 'plans']);
+        Route::get('invoices', [SubscriptionController::class, 'invoices'])
+            ->middleware('can.do:billing.manage');
+        Route::get('invoices/{invoice}', [SubscriptionController::class, 'showInvoice'])
+            ->middleware('can.do:billing.manage');
+        Route::post('subscription', [SubscriptionController::class, 'store'])
+            ->middleware(['can.do:billing.manage', 'idempotent']);
+        Route::post('subscription/change-plan', [SubscriptionController::class, 'changePlan'])
+            ->middleware(['can.do:billing.manage', 'idempotent']);
+        Route::post('subscription/sync', [SubscriptionController::class, 'sync'])
+            ->middleware(['can.do:billing.manage', 'idempotent']);
+        Route::post('subscription/cancel', [SubscriptionController::class, 'cancel'])
+            ->middleware('can.do:billing.manage');
 
         /* ---------- conflits de synchronisation ---------- */
         Route::get('sync/conflicts', [SyncConflictController::class, 'index'])
