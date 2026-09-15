@@ -52,6 +52,29 @@ final class PriceResolver
     }
 
     /**
+     * Le plus ancien prix connu pour cet article.
+     *
+     * Sert UNIQUEMENT de repli sur une vente hors-ligne dont l'horodatage
+     * précède toute ligne de prix enregistrée : la vente a bien eu lieu,
+     * l'article avait donc un prix, et le plus ancien connu est la meilleure
+     * preuve dont le serveur dispose. Rejeter serait pire — l'argent est
+     * déjà dans le tiroir.                                             [D-09]
+     */
+    public function earliestKnown(string $variantId, string $locationId, string $currency): ?Money
+    {
+        $row = DB::table('prices')
+            ->where('organization_id', $this->context->organizationId())
+            ->where('product_variant_id', $variantId)
+            ->where('currency', $currency)
+            ->where(fn ($q) => $q->where('location_id', $locationId)->orWhereNull('location_id'))
+            ->orderBy('valid_from')
+            ->orderByRaw('location_id IS NULL')
+            ->first();
+
+        return $row === null ? null : Money::of((int) $row->amount_minor, $row->currency);
+    }
+
+    /**
      * Change le prix : ferme la ligne courante, en ouvre une nouvelle.
      * On ne fait JAMAIS d'UPDATE sur le montant, sinon la marge d'une vente
      * passée change quand on change le prix d'aujourd'hui.

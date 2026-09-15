@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\AuthenticateToken;
+use App\Http\Middleware\EnsureIdempotency;
 use App\Http\Middleware\RequirePermission;
 use App\Http\Middleware\ResolveOrganization;
 use App\Support\Http\ApiResponse;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth.token' => AuthenticateToken::class,
             'organization' => ResolveOrganization::class,
             'can.do' => RequirePermission::class,
+            'idempotent' => EnsureIdempotency::class,
         ]);
 
         // ResolveOrganization doit tourner AVANT le binding de route, pour que
@@ -44,6 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
             ResolveOrganization::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             RequirePermission::class,
+            EnsureIdempotency::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -64,7 +64,8 @@ final class CheckoutService
         return DB::transaction(function () use (
             $session, $lines, $tenders, $customerId, $clientOrderId, $takenAt, $origin, $currency
         ): Order {
-            $priced = $this->priceLines($lines, $session->location_id, $currency, $takenAt);
+            $conflicts = [];
+            $priced = $this->priceLines($lines, $session->location_id, $currency, $takenAt, $origin, $conflicts);
 
             $subtotal = array_reduce(
                 $priced,
@@ -117,6 +118,7 @@ final class CheckoutService
 
             $cost = $this->writeStockMovements($order, $priced, $session->location_id);
             $this->postToLedger($order, $session, $subtotal, $discount, $tax, $cost);
+            $this->recordConflicts($order, $session->location_id, $conflicts);
             $this->emit($order, 'OrderCompleted');
 
             return $order->load('items', 'payments');
@@ -130,8 +132,14 @@ final class CheckoutService
      *
      * @return list<array{variant: ProductVariant, quantity: string, unit: Money, base: Money, tax: Money, discount: Money, line_total: Money, tax_rate_bp: int, cost: ?int}>
      */
-    private function priceLines(array $lines, string $locationId, string $currency, \DateTimeInterface $at): array
-    {
+    private function priceLines(
+        array $lines,
+        string $locationId,
+        string $currency,
+        \DateTimeInterface $at,
+        string $origin,
+        array &$conflicts,
+    ): array {
         $priced = [];
 
         foreach ($lines as $line) {
@@ -141,7 +149,7 @@ final class CheckoutService
 
             $unit = isset($line['unit_price_minor'])
                 ? Money::of($line['unit_price_minor'], $currency)
-                : $this->prices->resolve($variant->id, $locationId, $currency, $at);
+                : $this->resolveUnitPrice($variant->id, $locationId, $currency, $at, $origin, $conflicts);
 
             $gross = $unit->multipliedBy($line['quantity']);
             $discount = Money::of($line['discount_minor'] ?? 0, $currency);
@@ -325,6 +333,71 @@ final class CheckoutService
         }
 
         $this->ledger->post('order', $order->id, $entries, "Vente {$order->order_number}", $order->taken_at);
+    }
+
+    /**
+     * Le prix à appliquer quand la caisse n'en a pas envoyé.
+     *
+     * En ligne, un article sans prix en vigueur est un refus légitime : rien
+     * n'a encore été encaissé. Hors-ligne, la vente a DÉJÀ eu lieu — refuser
+     * ferait disparaître de l'argent réellement encaissé. On retombe alors
+     * sur le plus ancien prix connu et on signale l'écart au gérant. [D-09]
+     */
+    private function resolveUnitPrice(
+        string $variantId,
+        string $locationId,
+        string $currency,
+        \DateTimeInterface $at,
+        string $origin,
+        array &$conflicts,
+    ): Money {
+        try {
+            return $this->prices->resolve($variantId, $locationId, $currency, $at);
+        } catch (\RuntimeException $e) {
+            if ($origin !== 'OFFLINE') {
+                throw $e;
+            }
+
+            $fallback = $this->prices->earliestKnown($variantId, $locationId, $currency);
+
+            if ($fallback === null) {
+                throw new DomainException(
+                    "Aucun prix n'a jamais été enregistré pour l'article {$variantId} : ".
+                    'la caisse doit envoyer unit_price_minor pour une vente hors-ligne.'
+                );
+            }
+
+            $conflicts[] = [
+                'kind' => 'PRICE_VARIANCE',
+                'details' => [
+                    'product_variant_id' => $variantId,
+                    'taken_at' => $at->format(\DATE_ATOM),
+                    'reason' => 'aucun prix en vigueur à cette date',
+                    'applied_minor' => $fallback->minor,
+                    'currency' => $currency,
+                ],
+            ];
+
+            return $fallback;
+        }
+    }
+
+    /** Les conflits ne sont jamais silencieux : le gérant doit les voir. */
+    private function recordConflicts(Order $order, string $locationId, array $conflicts): void
+    {
+        if ($conflicts === []) {
+            return;
+        }
+
+        DB::table('sync_conflicts')->insert(array_map(fn (array $c): array => [
+            'id' => (string) Str::uuid7(),
+            'organization_id' => $order->organization_id,
+            'location_id' => $locationId,
+            'order_id' => $order->id,
+            'kind' => $c['kind'],
+            'details' => json_encode($c['details'], JSON_THROW_ON_ERROR),
+            'created_at' => now(),
+        ], $conflicts));
     }
 
     /** Le dernier coût d'achat connu, figé sur la ligne pour la marge. */
