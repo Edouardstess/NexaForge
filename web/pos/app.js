@@ -37,6 +37,7 @@ const state = {
   online: navigator.onLine,
   locationId: null,
   registerCode: "CAISSE-1",
+  lastOrder: null,
   view: "till",
   unit: "HTG",
   category: "Tout",
@@ -256,7 +257,8 @@ async function completeSale() {
   try {
     const res = await send(sale);
     dequeue(sale.idempotency_key);
-    toast(res.data.order_number, sale.expected_total, sale.change, false);
+    state.lastOrder = { id: res.data.id, number: res.data.order_number };
+    toast(res.data.order_number, sale.expected_total, sale.change, false, state.lastOrder.id);
   } catch (e) {
     if (e.offline) {
       // Elle reste dans la file, exactement où on l'a mise.
@@ -337,6 +339,7 @@ async function boot() {
   await ensureSession();
   await refreshCatalog().catch(() => {});
   renderAll();
+  installScanner();
   flushQueue();
 }
 
@@ -461,4 +464,71 @@ async function loadConflicts() {
 
 async function resolveConflict(id) {
   return api("/sync/conflicts/" + id + "/resolve", { method: "POST" });
+}
+
+/* ==================================================================== */
+/*  Douchette et ticket                                                 */
+/* ==================================================================== */
+
+/**
+ * Une douchette bon marché se présente au système comme un CLAVIER : elle
+ * tape le code puis Entrée, très vite. On la reconnaît à sa vitesse — un
+ * humain ne tape pas dix caractères en moins de cinquante millisecondes
+ * chacun — ce qui évite d'exiger un pilote ou une permission.
+ */
+function installScanner() {
+  const MAX_GAP_MS = 60;
+  const MIN_LENGTH = 4;
+
+  let buffer = "";
+  let lastKey = 0;
+
+  document.addEventListener("keydown", (e) => {
+    const now = Date.now();
+
+    // Une saisie lente est celle d'un humain : on ne s'en mêle pas.
+    if (now - lastKey > MAX_GAP_MS) buffer = "";
+    lastKey = now;
+
+    if (e.key === "Enter") {
+      const code = buffer;
+      buffer = "";
+      if (code.length >= MIN_LENGTH) {
+        e.preventDefault();
+        onScan(code);
+      }
+      return;
+    }
+
+    if (e.key.length === 1) buffer += e.key;
+  });
+}
+
+function onScan(code) {
+  const items = state.catalog?.items ?? [];
+  const found = items.find((i) => i.barcode === code)
+    ?? items.find((i) => i.sku?.toUpperCase() === code.toUpperCase());
+
+  if (!found) {
+    alertBox("Kòd " + code + " pa nan katalòg la.");
+    return;
+  }
+
+  if (found.price_minor === null) {
+    alertBox(found.name + " pa gen pri. Mete youn anvan w vann li.");
+    return;
+  }
+
+  addToCart(found.variant_id);
+}
+
+/** Le ticket, tel que le serveur le met en page. */
+async function fetchReceipt(orderId, format = "text") {
+  const headers = { Authorization: "Bearer " + state.token };
+  if (state.organizationId) headers["X-Organization"] = state.organizationId;
+
+  const res = await fetch(API + "/orders/" + orderId + "/receipt?format=" + format, { headers });
+  if (!res.ok) throw new Error("Resi a pa disponib.");
+
+  return format === "escpos" ? res.arrayBuffer() : res.text();
 }

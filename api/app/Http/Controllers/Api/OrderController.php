@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Domain\Receipt\ReceiptBuilder;
 use App\Domain\Sales\CheckoutService;
 use App\Domain\Sales\RefundService;
 use App\Models\CashierSession;
@@ -14,6 +15,7 @@ use DomainException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Les ventes.
@@ -130,6 +132,54 @@ final class OrderController
         $order = Order::query()->visibleToCurrentUser()->with(['items', 'payments', 'refunds'])->findOrFail($id);
 
         return ApiResponse::ok($this->payload($order));
+    }
+
+    /**
+     * Le ticket. Texte brut par défaut, octets ESC/POS pour une imprimante
+     * thermique. Construit côté serveur : deux caisses de versions
+     * différentes ne doivent pas imprimer deux mises en page.
+     */
+    public function receipt(Request $request, string $id): Response
+    {
+        $input = $request->validate([
+            'format' => ['nullable', 'in:text,escpos'],
+            'width' => ['nullable', 'integer', 'in:32,42'],
+        ]);
+
+        $order = Order::query()
+            ->visibleToCurrentUser()
+            ->with(['items', 'payments', 'location'])
+            ->findOrFail($id);
+
+        $membership = $this->context->membership();
+
+        $builder = new ReceiptBuilder(
+            // Une valeur de query string est une chaîne : la règle
+            // « integer » la valide mais ne la convertit pas.
+            width: (int) ($input['width'] ?? 42),
+            timezone: $this->context->timezone(),
+        );
+
+        $context = [
+            'organization' => $membership->organization->name,
+            'location' => $order->location->name,
+            'address' => $order->location->address,
+            'phone' => $order->location->phone,
+            'cashier' => $membership->user->first_name ?? null,
+        ];
+
+        if (($input['format'] ?? 'text') === 'escpos') {
+            // application/octet-stream : ces octets partent vers une
+            // imprimante, pas vers un moteur de rendu.
+            return response($builder->escpos($order, $context), 200, [
+                'Content-Type' => 'application/octet-stream',
+                'Content-Disposition' => 'attachment; filename="'.$order->order_number.'.bin"',
+            ]);
+        }
+
+        return response($builder->text($order, $context), 200, [
+            'Content-Type' => 'text/plain; charset=utf-8',
+        ]);
     }
 
     public function refund(Request $request, string $id): JsonResponse

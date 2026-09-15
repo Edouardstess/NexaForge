@@ -38,7 +38,7 @@ final class ResolveOrganization
         $query = Membership::query()
             ->where('user_id', $user->id)
             ->where('status', 'ACTIVE')
-            ->with('organization');
+            ->with(['organization', 'user', 'role']);
 
         $membership = $requested !== null
             ? $query->where('organization_id', $requested)->first()

@@ -110,6 +110,8 @@ Route::middleware('auth.token')->group(function (): void {
         // et le client ne doit pas être débité deux fois.              [D-11]
         Route::post('orders', [OrderController::class, 'store'])
             ->middleware(['can.do:order.create', 'idempotent']);
+        Route::get('orders/{order}/receipt', [OrderController::class, 'receipt'])
+            ->middleware('can.do:order.read');
         Route::post('orders/{order}/refund', [OrderController::class, 'refund'])
             ->middleware(['can.do:order.refund', 'idempotent']);
     });

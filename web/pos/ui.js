@@ -532,7 +532,7 @@ function renderModal() {
 
 let toastTimer = null;
 
-function toast(orderNumber, total, change, queued) {
+function toast(orderNumber, total, change, queued, orderId) {
   document.querySelector(".toast")?.remove();
   clearTimeout(toastTimer);
 
@@ -549,8 +549,20 @@ function toast(orderNumber, total, change, queued) {
     box.appendChild(el("span", "sep"));
     box.appendChild(el("span", null, "kenbe lokal"));
   }
+  // Imprimer depuis le toast : c'est le moment où le client attend son
+  // papier, pas trois écrans plus loin.
+  if (orderId) {
+    const print = el("button", "tprint", "Resi");
+    print.type = "button";
+    print.addEventListener("click", () => showReceipt(orderId).catch((e) => alertBox(e.message)));
+    box.appendChild(el("span", "sep"));
+    box.appendChild(print);
+    toastTimer = setTimeout(() => box.remove(), 12000);
+  } else {
+    toastTimer = setTimeout(() => box.remove(), 5000);
+  }
+
   document.body.appendChild(box);
-  toastTimer = setTimeout(() => box.remove(), 5000);
 }
 
 function alertBox(message) {

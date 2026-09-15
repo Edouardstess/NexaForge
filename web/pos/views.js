@@ -303,6 +303,13 @@ async function openOrderDialog(orderId) {
     }
     body.appendChild(list);
 
+    const actions = el("div", "mrow");
+    const receipt = el("button", "quick", "Wè resi a");
+    receipt.type = "button";
+    receipt.addEventListener("click", () => showReceipt(orderId).catch((e) => alertBox(e.message)));
+    actions.appendChild(receipt);
+    body.appendChild(actions);
+
     body.appendChild(el("span", "lbl", "Peman"));
     const pays = el("div", "zlist");
     for (const p of order.payments) {
@@ -530,4 +537,61 @@ function toastPlain(message) {
   box.appendChild(el("span", null, message));
   document.body.appendChild(box);
   setTimeout(() => box.remove(), 4000);
+}
+
+/* ============================================================== TICKET */
+
+/**
+ * Le ticket s'affiche en chasse fixe, tel que l'imprimante le sortira, et
+ * s'imprime par le navigateur. Une caisse sans imprimante thermique — le cas
+ * au démarrage — peut ainsi quand même donner un papier au client.
+ */
+async function showReceipt(orderId) {
+  const text = await fetchReceipt(orderId, "text");
+
+  modal("Resi a", (body) => {
+    const pre = el("pre", "receipt");
+    pre.textContent = text;
+    body.appendChild(pre);
+
+    const row = el("div", "mrow");
+
+    const print = el("button", "quick", "Enprime");
+    print.type = "button";
+    print.addEventListener("click", () => printReceipt(text));
+    row.appendChild(print);
+
+    const download = el("button", "quick", "Telechaje pou enprimant lan");
+    download.type = "button";
+    download.addEventListener("click", async () => {
+      const bytes = await fetchReceipt(orderId, "escpos");
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+      const a = el("a");
+      a.href = url;
+      a.download = orderId + ".bin";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+    row.appendChild(download);
+
+    body.appendChild(row);
+  });
+}
+
+function printReceipt(text) {
+  // Une fenêtre dédiée plutôt que window.print() sur la page : imprimer la
+  // caisse entière gâcherait un mètre de papier.
+  const w = window.open("", "_blank", "width=380,height=640");
+  if (!w) return alertBox("Otorize fenèt yo pou w ka enprime.");
+
+  const pre = w.document.createElement("pre");
+  pre.style.font = "12px/1.35 ui-monospace, monospace";
+  pre.style.margin = "0";
+  pre.textContent = text;
+  w.document.body.style.margin = "0";
+  w.document.body.appendChild(pre);
+  w.document.title = "Resi";
+  w.focus();
+  w.print();
+  w.close();
 }
