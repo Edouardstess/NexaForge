@@ -122,6 +122,16 @@ function renderShell() {
   }
   bar.appendChild(seg);
 
+  // Ouvrir / fermer la caisse depuis la barre : c'est le premier et le
+  // dernier geste de la journée, il ne se cache pas dans un menu.
+  const sess = el("button", "pill");
+  sess.id = "sessbtn"; sess.type = "button";
+  sess.addEventListener("click", () => {
+    if (state.session) closeSessionDialog().catch((e) => alertBox(e.message));
+    else openSessionDialog();
+  });
+  bar.appendChild(sess);
+
   const out = el("button", "pill", "Soti");
   out.type = "button";
   out.addEventListener("click", async () => {
@@ -132,8 +142,20 @@ function renderShell() {
   bar.appendChild(out);
   shell.appendChild(bar);
 
+  const nav = el("nav", "nav");
+  nav.id = "nav";
+  nav.setAttribute("aria-label", "Ekran yo");
+  shell.appendChild(nav);
+
+  // Les écrans gérant se rendent ici ; la caisse garde sa propre grille.
+  const viewhost = el("div", "viewhost");
+  viewhost.id = "viewhost";
+  viewhost.hidden = true;
+  shell.appendChild(viewhost);
+
   /* corps */
   const work = el("div", "work");
+  work.id = "tillwork";
 
   const left = el("section", "panel");
   const searchrow = el("div", "searchrow");
@@ -215,6 +237,12 @@ function renderChrome() {
     meta.textContent = state.session
       ? state.session.register_code + " · " + (state.me?.user?.first_name ?? "") + " · sesyon louvri"
       : "Pa gen sesyon louvri";
+  }
+
+  const sess = $("#sessbtn");
+  if (sess) {
+    sess.textContent = state.session ? "Fèmen kès la" : "Louvri kès la";
+    sess.className = "pill" + (state.session ? "" : " off");
   }
 
   const queue = $("#queue");
@@ -349,6 +377,8 @@ function renderAll() {
   renderChrome();
   renderGrid();
   renderTicket();
+  renderNav();
+  renderView();
 }
 
 /* -------------------------------------------------------------- modal */
@@ -356,6 +386,7 @@ function renderAll() {
 let veil = null;
 
 function openModal() {
+  closeModal();
   state.tenders = [];
   veil = el("div", "veil");
   veil.addEventListener("click", (e) => { if (e.target === veil) closeModal(); });

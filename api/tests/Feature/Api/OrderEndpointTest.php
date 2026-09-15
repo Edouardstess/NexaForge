@@ -252,6 +252,28 @@ final class OrderEndpointTest extends TestCase
     }
 
     #[Test]
+    public function two_sales_in_the_same_second_keep_a_stable_order(): void
+    {
+        // Sans départage, la pagination répète une ligne et en saute une autre.
+        $sameInstant = now()->subMinute()->toIso8601String();
+
+        for ($i = 0; $i < 6; $i++) {
+            $this->sale("K{$i}", [
+                'client_order_id' => "c{$i}",
+                'origin' => 'OFFLINE',          // un horodatage passé, c'est hors-ligne
+                'taken_at' => $sameInstant,
+            ])->assertCreated();
+        }
+
+        $first = $this->withToken($this->token)->getJson('/api/v1/orders')->json('data.*.order_number');
+        $again = $this->withToken($this->token)->getJson('/api/v1/orders')->json('data.*.order_number');
+
+        $this->assertSame($first, $again);
+        $this->assertSame($first, array_values(array_unique($first)));
+        $this->assertSame('DELMAS-000006', $first[0]);
+    }
+
+    #[Test]
     public function orders_are_listed_by_the_time_the_cashier_took_them(): void
     {
         // Un horodatage passé, c'est par définition une vente hors-ligne.

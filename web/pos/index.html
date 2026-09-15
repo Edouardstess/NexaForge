@@ -66,6 +66,11 @@
 }
 
 *{box-sizing:border-box}
+/* `hidden` ne suffit pas sur un élément à qui on a donné display:grid ou
+   flex — la déclaration de display l'emporte sur la valeur par défaut de
+   l'attribut. Sans cette règle, l'écran de caisse reste visible sous les
+   écrans gérant. */
+[hidden]{display:none !important}
 body{
   background:var(--ground); color:var(--ink);
   font-family:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -281,5 +286,58 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--brand);outline-
 .toast.bad{background:var(--danger);color:#fff}
 </style>
 
+<style>
+/* ---------- navigation entre écrans ---------- */
+.nav{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}
+.nav button{
+  border:1px solid var(--line);border-radius:9px;padding:8px 16px;
+  font-size:14.5px;font-weight:600;color:var(--ink-muted);background:var(--surface);
+}
+.nav button[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.viewhost{display:grid;gap:16px;margin-top:16px}
+
+/* ---------- panneaux gérant ---------- */
+.vhead{padding:14px 16px;border-bottom:1px solid var(--line)}
+.rows{display:grid}
+.orow,.crow{
+  display:flex;align-items:center;gap:14px;justify-content:space-between;
+  padding:13px 16px;border-bottom:1px solid var(--line);
+  text-align:left;width:100%;background:none;
+}
+.orow:hover{background:var(--surface-sunk)}
+.oright{display:flex;align-items:center;gap:10px;flex:none}
+.badge{
+  font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  padding:3px 8px;border-radius:5px;background:var(--warn-wash);color:var(--warn);
+}
+.badge.refunded{background:var(--surface-sunk);color:var(--ink-faint)}
+.crow{align-items:flex-start}
+.facts{font-size:12px;color:var(--ink-faint);margin-top:3px;overflow-wrap:anywhere}
+
+/* ---------- tuiles du rapport ---------- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:1px;background:var(--line)}
+.tile{display:grid;gap:3px;padding:16px;background:var(--surface)}
+.tile .big{font-size:25px;font-weight:600;line-height:1.1}
+.pad{padding:14px 16px 0}
+.zlist.pad{padding-bottom:14px}
+
+/* ---------- blocs de dialogue ---------- */
+.zbox{display:grid;gap:4px;padding:12px 14px;border-radius:9px;background:var(--surface-sunk)}
+.zlist{display:grid;gap:2px}
+.kv,.trow{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.kv.warn{color:var(--warn);font-weight:600}
+.iline{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
+.iline:last-child{border-bottom:0}
+.qtyin{
+  width:72px;flex:none;text-align:center;font:inherit;font-size:16px;
+  border:1px solid var(--line-strong);border-radius:8px;padding:8px;
+  background:var(--surface-sunk);color:var(--ink);
+}
+.check{display:flex;align-items:center;gap:9px;font-size:14px}
+.check input{width:18px;height:18px;accent-color:var(--brand)}
+.hint{margin:0;font-size:13px;color:var(--ink-muted);line-height:1.5}
+</style>
+
 <script src="app.js"></script>
 <script src="ui.js"></script>
+<script src="views.js"></script>

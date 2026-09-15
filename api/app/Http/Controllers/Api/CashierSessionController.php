@@ -160,7 +160,10 @@ final class CashierSessionController
             return $variances;
         });
 
-        return ApiResponse::ok($this->payload($session->fresh()) + ['totals' => $payload]);
+        // array_merge, pas « + » : l'union de tableaux garde la clé de GAUCHE,
+        // donc « totals » calculé ici serait silencieusement écrasé par la
+        // liste brute de payload() et l'écart disparaîtrait de la réponse.
+        return ApiResponse::ok(array_merge($this->payload($session->fresh()), ['totals' => $payload]));
     }
 
     /** Le Z : ce que la session a fait, lu depuis les ventes et le ledger. */
@@ -202,7 +205,15 @@ final class CashierSessionController
         ]);
     }
 
-    /** Le fonds d'ouverture plus ce que le ledger a vu passer en espèces. */
+    /**
+     * Ce qui devrait être dans le tiroir : le fonds d'ouverture, plus les
+     * espèces encaissées, moins la monnaie rendue, MOINS les remboursements
+     * payés en espèces.
+     *
+     * Oublier les remboursements fait apparaître un excédent fantôme chaque
+     * soir chez un commerçant qui rend de l'argent — et un écart qu'on ne
+     * sait pas expliquer finit par être ignoré, ce qui tue le contrôle.
+     */
     private function expectedCash(CashierSession $session, string $currency): Money
     {
         $opening = (int) DB::table('cashier_session_totals')
@@ -210,21 +221,34 @@ final class CashierSessionController
             ->where('currency', $currency)
             ->value('opening_minor');
 
-        $movement = (int) DB::table('payments as p')
+        $received = (int) DB::table('payments as p')
             ->join('orders as o', 'o.id', '=', 'p.order_id')
             ->where('o.cashier_session_id', $session->id)
             ->where('p.method', 'CASH')
             ->where('p.currency', $currency)
             ->sum('p.amount_minor');
 
-        $change = $currency === $this->context->baseCurrency()
+        $isBase = $currency === $this->context->baseCurrency();
+
+        // La monnaie et les remboursements sortent en devise de
+        // comptabilisation : ils ne touchent pas le tiroir en dollars.
+        $change = $isBase
             ? (int) DB::table('payments as p')
                 ->join('orders as o', 'o.id', '=', 'p.order_id')
                 ->where('o.cashier_session_id', $session->id)
                 ->sum('p.change_minor')
             : 0;
 
-        return Money::of($opening + $movement - $change, $currency);
+        $refunded = $isBase
+            ? (int) DB::table('refunds as r')
+                ->join('orders as o', 'o.id', '=', 'r.order_id')
+                ->where('o.cashier_session_id', $session->id)
+                ->where('r.method', 'CASH')
+                ->where('r.currency', $currency)
+                ->sum('r.amount_minor')
+            : 0;
+
+        return Money::of($opening + $received - $change - $refunded, $currency);
     }
 
     private function payload(CashierSession $session): array

@@ -9,6 +9,7 @@ use App\Domain\Sales\RefundService;
 use App\Models\CashierSession;
 use App\Models\Location;
 use App\Models\Order;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -183,6 +184,38 @@ final class ReportTest extends TestCase
         // 100 Kola à 30,00 plus 100 Diri à 300,00.
         $this->assertSame(3300000, $r['total_value_minor']);
         $this->assertSame(0, $r['negative_lines']);
+    }
+
+    #[Test]
+    public function the_z_report_subtracts_cash_refunds_from_the_expected_drawer(): void
+    {
+        // Sans cela, un commerçant qui rembourse voit un excédent fantôme
+        // chaque soir — et un écart inexplicable finit par être ignoré.
+        DB::table('cashier_session_totals')->insert([
+            'cashier_session_id' => $this->session->id,
+            'currency' => 'HTG',
+            'opening_minor' => 100000,
+            'expected_minor' => 100000,
+        ]);
+
+        $order = $this->sell($this->kola, '10', 50000);   // 500,00 encaissés
+
+        app(RefundService::class)->refund(
+            $order,
+            [['order_item_id' => $order->items->first()->id, 'quantity' => '4']],
+            'Retounen',
+            true,
+            'CASH',
+        );                                                 // 200,00 rendus
+
+        $closed = $this->withToken($this->asOwner())
+            ->postJson("/api/v1/cashier-sessions/{$this->session->id}/close", [
+                // 1 000,00 + 500,00 − 200,00 = 1 300,00
+                'counted' => [['currency' => 'HTG', 'amount_minor' => 130000]],
+            ])->assertOk()->json('data.totals.HTG');
+
+        $this->assertSame(130000, $closed['expected_minor']);
+        $this->assertSame(0, $closed['variance_minor'], 'aucun excédent fantôme');
     }
 
     #[Test]

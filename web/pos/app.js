@@ -36,6 +36,8 @@ const state = {
   queue: readJSON(STORE.queue) ?? [],
   online: navigator.onLine,
   locationId: null,
+  registerCode: "CAISSE-1",
+  view: "till",
   unit: "HTG",
   category: "Tout",
   query: "",
@@ -364,22 +366,9 @@ async function ensureSession() {
     throw e;
   }
 
-  try {
-    const opened = await api("/cashier-sessions", {
-      method: "POST",
-      body: {
-        location_id: state.locationId,
-        register_code: "CAISSE-1",
-        // Fonds de caisse : à saisir par le caissier dans l'écran d'ouverture,
-        // qui reste à faire. Zéro en attendant, plutôt qu'un chiffre inventé.
-        opening: [{ currency: baseCurrency(), amount_minor: 0 }],
-      },
-    });
-    state.session = opened.data;
-    writeJSON(STORE.session, state.session);
-  } catch (e) {
-    if (!e.offline) alertBox(e.message);
-  }
+  // On n'ouvre plus la caisse à la place du caissier : le fond de tiroir est
+  // un chiffre qu'il compte, pas un zéro qu'on suppose. L'écran propose
+  // l'ouverture, il ne la fait pas dans son dos.
 }
 
 async function refreshCatalog() {
@@ -394,4 +383,82 @@ async function refreshCatalog() {
 function signOut() {
   state.token = null; state.me = null; state.session = null;
   write(STORE.token, null); write(STORE.org, null); write(STORE.session, null);
+}
+
+/* ==================================================================== */
+/*  Écrans gérant : caisse, ventes, rapports, conflits                  */
+/* ==================================================================== */
+
+/** Ce que le membre a le droit de voir, pour n'afficher que ça. */
+function can(permission) {
+  return (state.me?.permissions ?? []).includes(permission);
+}
+
+async function openCashierSession(floats) {
+  const res = await api("/cashier-sessions", {
+    method: "POST",
+    body: {
+      location_id: state.locationId,
+      register_code: state.registerCode ?? "CAISSE-1",
+      opening: floats,
+    },
+  });
+  state.session = res.data;
+  writeJSON(STORE.session, state.session);
+  return res.data;
+}
+
+async function loadSessionReport(sessionId) {
+  return (await api("/cashier-sessions/" + sessionId + "/report")).data;
+}
+
+/**
+ * Clôture. Le comptage part PAR DEVISE : le tiroir contient des gourdes et
+ * des dollars, et un Z qui les additionne ne veut rien dire.           [D-04]
+ */
+async function closeCashierSession(sessionId, counted, notes) {
+  const res = await api("/cashier-sessions/" + sessionId + "/close", {
+    method: "POST",
+    body: { counted, notes: notes || null },
+  });
+  state.session = null;
+  write(STORE.session, null);
+  return res.data;
+}
+
+async function loadOrders(params = {}) {
+  const q = new URLSearchParams(params).toString();
+  const res = await api("/orders" + (q ? "?" + q : ""));
+  return { rows: res.data, meta: res.meta };
+}
+
+async function loadOrder(id) {
+  return (await api("/orders/" + id)).data;
+}
+
+async function sendRefund(orderId, lines, reason, restock, method) {
+  return (await api("/orders/" + orderId + "/refund", {
+    method: "POST",
+    idempotencyKey: uuid(),
+    body: { lines, reason, restock, method },
+  })).data;
+}
+
+async function loadDailyReport(date) {
+  const q = new URLSearchParams({ location_id: state.locationId });
+  if (date) q.set("date", date);
+  return (await api("/reports/daily?" + q)).data;
+}
+
+async function loadTopProducts() {
+  return (await api("/reports/top-products?limit=10")).data;
+}
+
+async function loadConflicts() {
+  const res = await api("/sync/conflicts");
+  return { rows: res.data, meta: res.meta };
+}
+
+async function resolveConflict(id) {
+  return api("/sync/conflicts/" + id + "/resolve", { method: "POST" });
 }

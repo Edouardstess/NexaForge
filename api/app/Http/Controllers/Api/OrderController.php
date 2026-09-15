@@ -114,7 +114,12 @@ final class OrderController
             ->when($request->query('to'), fn ($q, $v) => $q->where('taken_at', '<=', $v))
             // Sur taken_at, jamais created_at : une caisse restée hors-ligne
             // six heures ne doit pas voir ses ventes du matin rangées au soir.
+            //
+            // Le numéro de commande départage : deux ventes encaissées dans la
+            // même seconde n'ont sinon pas d'ordre stable, et en pagination
+            // une ligne apparaît deux fois pendant qu'une autre disparaît.
             ->orderByDesc('taken_at')
+            ->orderByDesc('order_number')
             ->paginate(min((int) $request->query('page_size', 25), 100));
 
         return ApiResponse::paginated($orders, fn (Order $o): array => $this->summary($o));
