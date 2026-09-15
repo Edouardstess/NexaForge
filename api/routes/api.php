@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\ExchangeRateController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\SyncConflictController;
 use App\Support\Http\ApiResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -85,6 +86,12 @@ Route::middleware('auth.token')->group(function (): void {
             ->middleware('can.do:session.close');
         Route::get('cashier-sessions/{session}/report', [CashierSessionController::class, 'report'])
             ->middleware('can.do:session.read');
+
+        /* ---------- conflits de synchronisation ---------- */
+        Route::get('sync/conflicts', [SyncConflictController::class, 'index'])
+            ->middleware('can.do:conflict.read');
+        Route::post('sync/conflicts/{conflict}/resolve', [SyncConflictController::class, 'resolve'])
+            ->middleware('can.do:conflict.resolve');
 
         /* ---------- rapports ---------- */
         Route::get('reports/daily', [ReportController::class, 'daily'])

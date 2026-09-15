@@ -58,6 +58,15 @@ final class CheckoutService
             throw new DomainException('Une vente comporte au moins une ligne.');
         }
 
+        // Une session close ne refuse PAS une vente hors-ligne : elle a été
+        // encaissée pendant que la caisse tournait, la clôture est simplement
+        // arrivée avant la synchronisation. Le Z est recalculé et marqué
+        // amendé. En ligne, c'est une erreur : la caisse n'aurait pas dû
+        // vendre sur une session fermée.                                [D-09]
+        if (! $session->isOpen() && $origin !== 'OFFLINE') {
+            throw new DomainException('Cette session de caisse est clôturée.');
+        }
+
         $currency = $this->context->baseCurrency();
         $takenAt ??= now();
 
@@ -116,8 +125,22 @@ final class CheckoutService
                 ));
             }
 
-            $cost = $this->writeStockMovements($order, $priced, $session->location_id);
+            $cost = $this->writeStockMovements($order, $priced, $session->location_id, $conflicts);
             $this->postToLedger($order, $session, $subtotal, $discount, $tax, $cost);
+            if (! $session->isOpen()) {
+                $session->forceFill(['status' => 'AMENDED'])->save();
+
+                $conflicts[] = [
+                    'kind' => 'SESSION_CLOSED',
+                    'details' => [
+                        'cashier_session_id' => $session->id,
+                        'closed_at' => $session->closed_at?->toIso8601String(),
+                        'taken_at' => $takenAt->format(\DATE_ATOM),
+                        'reason' => 'vente arrivée après la clôture — le Z a été recalculé',
+                    ],
+                ];
+            }
+
             $this->recordConflicts($order, $session->location_id, $conflicts);
             $this->emit($order, 'OrderCompleted');
 
@@ -147,8 +170,24 @@ final class CheckoutService
                 ->with('product.taxRate')
                 ->findOrFail($line['variant_id']);
 
+            if (! $variant->active || ! $variant->product->active) {
+                // L'article a été retiré de la vente pendant que la caisse
+                // était hors-ligne. On enregistre quand même : il est parti.
+                $conflicts[] = [
+                    'kind' => 'ARCHIVED_PRODUCT',
+                    'details' => [
+                        'product_variant_id' => $variant->id,
+                        'sku' => $variant->sku,
+                        'name' => $variant->product->name,
+                    ],
+                ];
+            }
+
             $unit = isset($line['unit_price_minor'])
-                ? Money::of($line['unit_price_minor'], $currency)
+                ? $this->honourCashierPrice(
+                    $variant, $locationId, $currency, $at,
+                    Money::of($line['unit_price_minor'], $currency), $origin, $conflicts,
+                )
                 : $this->resolveUnitPrice($variant->id, $locationId, $currency, $at, $origin, $conflicts);
 
             $gross = $unit->multipliedBy($line['quantity']);
@@ -239,7 +278,7 @@ final class CheckoutService
     }
 
     /** @return Money le coût total des marchandises sorties */
-    private function writeStockMovements(Order $order, array $priced, string $locationId): Money
+    private function writeStockMovements(Order $order, array $priced, string $locationId, array &$conflicts): Money
     {
         $cost = Money::zero($order->currency);
 
@@ -253,7 +292,7 @@ final class CheckoutService
             // Une caisse de 24 vendue, ce sont 24 unités déduites. [D-06]
             $stockQuantity = $variant->toStockQuantity($line['quantity']);
 
-            $this->stock->move(
+            $balance = $this->stock->move(
                 locationId: $locationId,
                 variantId: $variant->stockVariantId(),
                 type: 'SALE',
@@ -261,6 +300,22 @@ final class CheckoutService
                 referenceType: 'order',
                 referenceId: $order->id,
             );
+
+            // Un solde négatif remonte au gérant par l'écran des conflits,
+            // pas seulement par la liste des écarts de stock : c'est là qu'il
+            // regarde après une coupure.                                [D-09]
+            if (\App\Domain\Shared\Decimal::toScaledInt($balance, 4) < 0) {
+                $conflicts[] = [
+                    'kind' => 'STOCK_NEGATIVE',
+                    'details' => [
+                        'product_variant_id' => $variant->id,
+                        'sku' => $variant->sku,
+                        'name' => $variant->product->name,
+                        'sold' => $stockQuantity,
+                        'balance' => $balance,
+                    ],
+                ];
+            }
 
             if ($line['cost'] !== null) {
                 $cost = $cost->plus(
@@ -333,6 +388,61 @@ final class CheckoutService
         }
 
         $this->ledger->post('order', $order->id, $entries, "Vente {$order->order_number}", $order->taken_at);
+    }
+
+    /**
+     * Le prix envoyé par la caisse fait foi : c'est ce que le client a payé,
+     * et le serveur n'a pas autorité sur un fait accompli.               [D-09]
+     *
+     * Mais un écart avec le prix en vigueur est signalé, pour que le gérant
+     * voie qu'une caisse a vendu à un tarif qui n'est plus le sien — erreur
+     * de saisie, catalogue périmé, ou pire.
+     */
+    private function honourCashierPrice(
+        ProductVariant $variant,
+        string $locationId,
+        string $currency,
+        \DateTimeInterface $at,
+        Money $sent,
+        string $origin,
+        array &$conflicts,
+    ): Money {
+        $comparedTo = 'le prix en vigueur à la vente';
+
+        try {
+            $inForce = $this->prices->resolve($variant->id, $locationId, $currency, $at);
+        } catch (\RuntimeException) {
+            // Aucun prix ne couvrait cet instant — le gérant a remplacé la
+            // ligne depuis. On compare alors au prix d'AUJOURD'HUI : sans
+            // cela l'écart passerait inaperçu, ce qui est précisément le cas
+            // qu'on veut voir après une longue coupure.
+            try {
+                $inForce = $this->prices->resolve($variant->id, $locationId, $currency);
+                $comparedTo = 'le prix actuel';
+            } catch (\RuntimeException) {
+                return $sent;   // aucune référence nulle part : rien à dire
+            }
+        }
+
+        if ($sent->equals($inForce)) {
+            return $sent;
+        }
+
+        $conflicts[] = [
+            'kind' => 'PRICE_VARIANCE',
+            'details' => [
+                'product_variant_id' => $variant->id,
+                'sku' => $variant->sku,
+                'charged_minor' => $sent->minor,
+                'in_force_minor' => $inForce->minor,
+                'difference_minor' => $sent->minor - $inForce->minor,
+                'currency' => $currency,
+                'compared_to' => $comparedTo,
+                'origin' => $origin,
+            ],
+        ];
+
+        return $sent;
     }
 
     /**

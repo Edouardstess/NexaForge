@@ -62,7 +62,10 @@ final class OrderController
             return ApiResponse::error('NOT_FOUND', 'Session de caisse introuvable.', 404);
         }
 
-        if (! $session->isOpen()) {
+        // Une vente hors-ligne arrivée après la clôture n'est pas refusée :
+        // elle a été encaissée avant, la clôture est juste passée devant. Le
+        // service la rattache et fait repasser le Z en amendé.          [D-09]
+        if (! $session->isOpen() && ($input['origin'] ?? 'ONLINE') !== 'OFFLINE') {
             return ApiResponse::error(
                 'SESSION_NOT_OPEN',
                 'Cette session est clôturée. Ouvrez une nouvelle caisse.',

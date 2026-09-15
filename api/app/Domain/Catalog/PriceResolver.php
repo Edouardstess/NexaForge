@@ -89,16 +89,28 @@ final class PriceResolver
         $organizationId = $this->context->organizationId();
 
         DB::transaction(function () use ($variantId, $amount, $locationId, $from, $organizationId): void {
-            DB::table('prices')
+            $scope = fn ($q) => $q
                 ->where('organization_id', $organizationId)
                 ->where('product_variant_id', $variantId)
                 ->where('currency', $amount->currency)
                 ->when(
                     $locationId === null,
-                    fn ($q) => $q->whereNull('location_id'),
-                    fn ($q) => $q->where('location_id', $locationId),
-                )
+                    fn ($inner) => $inner->whereNull('location_id'),
+                    fn ($inner) => $inner->where('location_id', $locationId),
+                );
+
+            // Une ligne qui n'aurait jamais été en vigueur — elle commence à
+            // la même seconde ou après — est supprimée plutôt que fermée : la
+            // fermer donnerait valid_to <= valid_from, que le CHECK refuse.
+            // Cela arrive dès qu'on corrige un prix juste après l'avoir posé.
+            $scope(DB::table('prices'))
                 ->whereNull('valid_to')
+                ->where('valid_from', '>=', $from)
+                ->delete();
+
+            $scope(DB::table('prices'))
+                ->whereNull('valid_to')
+                ->where('valid_from', '<', $from)
                 ->update(['valid_to' => $from]);
 
             DB::table('prices')->insert([

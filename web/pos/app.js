@@ -238,20 +238,29 @@ async function completeSale() {
     queued_at: new Date().toISOString(),
   };
 
+  // ÉCRITURE D'ABORD, ENVOI ENSUITE.
+  //
+  // La vente est posée sur le disque AVANT la moindre tentative réseau. Si le
+  // courant saute pendant l'envoi — le cas le plus fréquent à Port-au-Prince,
+  // avant même la coupure réseau — elle est déjà là et repartira au
+  // redémarrage. L'inverse perdrait une vente encaissée.              [D-09]
+  enqueue(sale);
+
   state.cart = [];
   state.tenders = [];
   closeModal();
+  renderAll();
 
   try {
     const res = await send(sale);
+    dequeue(sale.idempotency_key);
     toast(res.data.order_number, sale.expected_total, sale.change, false);
   } catch (e) {
     if (e.offline) {
-      enqueue(sale);
+      // Elle reste dans la file, exactement où on l'a mise.
       toast("nan fil la", sale.expected_total, sale.change, true);
     } else {
-      // Le serveur a refusé : la vente est remise dans le panier pour que le
-      // caissier voie ce qui s'est passé au lieu de la perdre.
+      dequeue(sale.idempotency_key);
       alertBox(e.message);
     }
   }
@@ -260,12 +269,25 @@ async function completeSale() {
   renderAll();
 }
 
-async function send(sale) {
-  return api("/orders", { method: "POST", body: sale.body, idempotencyKey: sale.idempotency_key });
+async function send(sale, { replay = false } = {}) {
+  // Une vente rejouée depuis la file n'est pas arrivée en direct : c'est,
+  // par définition, une vente hors-ligne. Le dire ouvre les tolérances que
+  // le serveur réserve à ce cas — prix disparu, session déjà close. [D-09]
+  const body = replay ? { ...sale.body, origin: "OFFLINE" } : sale.body;
+
+  return api("/orders", { method: "POST", body, idempotencyKey: sale.idempotency_key });
 }
 
 function enqueue(sale) {
   state.queue.push(sale);
+  // Écriture synchrone : au retour de cette ligne, la vente est sur le
+  // disque. Un await ici rouvrirait la fenêtre qu'on vient de fermer.
+  writeJSON(STORE.queue, state.queue);
+  renderChrome();
+}
+
+function dequeue(idempotencyKey) {
+  state.queue = state.queue.filter((s) => s.idempotency_key !== idempotencyKey);
   writeJSON(STORE.queue, state.queue);
   renderChrome();
 }
@@ -278,16 +300,13 @@ async function flushQueue() {
   while (state.queue.length) {
     const sale = state.queue[0];
     try {
-      await send(sale);
-      state.queue.shift();
-      writeJSON(STORE.queue, state.queue);
-      renderChrome();
+      await send(sale, { replay: true });
+      dequeue(sale.idempotency_key);
     } catch (e) {
       if (e.offline) break;               // on réessaiera, rien n'est perdu
       // Refus définitif du serveur : on sort la vente de la file et on la
       // signale, plutôt que de boucler indéfiniment dessus.
-      state.queue.shift();
-      writeJSON(STORE.queue, state.queue);
+      dequeue(sale.idempotency_key);
       alertBox("Yon vant nan fil la refize : " + e.message);
     }
   }
