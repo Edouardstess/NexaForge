@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Domain\Identity\LoginThrottle;
 use App\Domain\Identity\TokenService;
+use App\Models\Location;
 use App\Models\Membership;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
@@ -123,11 +124,44 @@ final class AuthController
                 'timezone' => $membership->organization->timezone,
             ],
             'role' => $membership->role->code,
+            // La RESTRICTION (vide = aucune) et les locations réellement
+            // accessibles sont deux choses différentes. Un client qui ne
+            // reçoit que la restriction ne sait pas où travailler.
             'location_ids' => $context->locationIds(),
             'has_full_location_access' => $context->hasFullLocationAccess(),
+            'locations' => $this->accessibleLocations($context),
             'permissions' => $context->permissions(),
             'organizations' => $this->organizationsFor($request->user()),
         ]);
+    }
+
+    /**
+     * Les points de vente sur lesquels cette session peut travailler.
+     *
+     * Portée vide = toutes celles de l'organisation ; portée non vide = cet
+     * ensemble exactement. Dans les deux cas le client reçoit une liste
+     * utilisable, jamais un tableau vide à interpréter.
+     *
+     * @return list<array{id: string, code: string, name: string, kind: string, display_unit: string}>
+     */
+    private function accessibleLocations(OrgContext $context): array
+    {
+        return Location::query()
+            ->where('active', true)
+            ->when(
+                ! $context->hasFullLocationAccess(),
+                fn ($q) => $q->whereIn('id', $context->locationIds()),
+            )
+            ->orderBy('code')
+            ->get()
+            ->map(fn (Location $l): array => [
+                'id' => $l->id,
+                'code' => $l->code,
+                'name' => $l->name,
+                'kind' => $l->kind,
+                'display_unit' => $l->display_unit,
+            ])
+            ->all();
     }
 
     private function userPayload(User $user): array
