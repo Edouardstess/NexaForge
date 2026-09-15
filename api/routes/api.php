@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\ExchangeRateController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\ReportController;
 use App\Support\Http\ApiResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -85,6 +86,14 @@ Route::middleware('auth.token')->group(function (): void {
         Route::get('cashier-sessions/{session}/report', [CashierSessionController::class, 'report'])
             ->middleware('can.do:session.read');
 
+        /* ---------- rapports ---------- */
+        Route::get('reports/daily', [ReportController::class, 'daily'])
+            ->middleware('can.do:report.read');
+        Route::get('reports/top-products', [ReportController::class, 'topProducts'])
+            ->middleware('can.do:report.read');
+        Route::get('reports/stock-value', [ReportController::class, 'stockValue'])
+            ->middleware('can.do:report.read');
+
         /* ---------- ventes ---------- */
         Route::get('orders', [OrderController::class, 'index'])
             ->middleware('can.do:order.read');
@@ -94,5 +103,7 @@ Route::middleware('auth.token')->group(function (): void {
         // et le client ne doit pas être débité deux fois.              [D-11]
         Route::post('orders', [OrderController::class, 'store'])
             ->middleware(['can.do:order.create', 'idempotent']);
+        Route::post('orders/{order}/refund', [OrderController::class, 'refund'])
+            ->middleware(['can.do:order.refund', 'idempotent']);
     });
 });

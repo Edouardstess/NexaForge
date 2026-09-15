@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Domain\Sales\CheckoutService;
+use App\Domain\Sales\RefundService;
 use App\Models\CashierSession;
 use App\Models\Order;
 use App\Support\Http\ApiResponse;
@@ -25,6 +26,7 @@ final class OrderController
     public function __construct(
         private readonly OrgContext $context,
         private readonly CheckoutService $checkout,
+        private readonly RefundService $refunds,
     ) {}
 
     public function store(Request $request): JsonResponse
@@ -120,6 +122,34 @@ final class OrderController
         $order = Order::query()->visibleToCurrentUser()->with(['items', 'payments', 'refunds'])->findOrFail($id);
 
         return ApiResponse::ok($this->payload($order));
+    }
+
+    public function refund(Request $request, string $id): JsonResponse
+    {
+        $input = $request->validate([
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.order_item_id' => ['required', 'uuid'],
+            'lines.*.quantity' => ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'reason' => ['required', 'string', 'min:3', 'max:200'],
+            'restock' => ['boolean'],
+            'method' => ['nullable', 'in:CASH,MONCASH,NATCASH,CARD,CREDIT'],
+        ]);
+
+        $order = Order::query()->visibleToCurrentUser()->findOrFail($id);
+
+        try {
+            $refund = $this->refunds->refund(
+                order: $order,
+                lines: $input['lines'],
+                reason: $input['reason'],
+                restock: $input['restock'] ?? true,
+                method: $input['method'] ?? 'CASH',
+            );
+        } catch (DomainException $e) {
+            return ApiResponse::error('REFUND_REFUSED', $e->getMessage(), 422);
+        }
+
+        return ApiResponse::created($refund);
     }
 
     private function summary(Order $order): array
