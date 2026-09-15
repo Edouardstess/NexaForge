@@ -28,6 +28,16 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class EnsureIdempotency
 {
+    /**
+     * Au-delà de ce délai, une requête « en cours » est tenue pour morte.
+     *
+     * Le serveur peut disparaître au milieu d'un encaissement — panne, OOM,
+     * conteneur redémarré. Sans reprise, la ligne reste IN_PROGRESS pour
+     * toujours et cette vente-là répond 409 à chaque tentative : la caisse la
+     * rejoue indéfiniment depuis sa file et elle n'atterrit jamais.
+     */
+    private const LOCK_TTL_SECONDS = 120;
+
     public function handle(Request $request, Closure $next): Response
     {
         $key = $request->header('Idempotency-Key');
@@ -49,19 +59,39 @@ final class EnsureIdempotency
             ->first();
 
         if ($existing !== null) {
+            // L'ÉTAT d'abord, l'empreinte ensuite. Une tentative abandonnée
+            // n'a aucune autorité sur la clé : il n'existe aucune réponse
+            // mémorisée qu'une empreinte différente viendrait contredire.
+            if ($existing->status === 'IN_PROGRESS') {
+                // La reprise est elle-même atomique : deux requêtes qui
+                // constatent le même abandon se disputent cet UPDATE, et
+                // seule celle qui touche une ligne repart.
+                $reclaimed = DB::table('idempotency_keys')
+                    ->where('organization_id', $organizationId)
+                    ->where('key', $key)
+                    ->where('status', 'IN_PROGRESS')
+                    ->where('locked_at', '<', now()->subSeconds(self::LOCK_TTL_SECONDS))
+                    ->update(['locked_at' => now(), 'request_fingerprint' => $fingerprint]);
+
+                if ($reclaimed === 0) {
+                    return ApiResponse::error(
+                        'REQUEST_IN_FLIGHT',
+                        'Cette opération est déjà en cours de traitement.',
+                        409,
+                    );
+                }
+
+                return $this->process($request, $next, $organizationId, $key);
+            }
+
+            // Terminée : la réponse mémorisée fait foi, et la même clé sur une
+            // requête différente est un bug du client. Le masquer ferait
+            // disparaître une vente.
             if ($existing->request_fingerprint !== $fingerprint) {
                 return ApiResponse::error(
                     'IDEMPOTENCY_KEY_REUSED',
                     'Cette clé a déjà servi pour une requête différente.',
                     422,
-                );
-            }
-
-            if ($existing->status === 'IN_PROGRESS') {
-                return ApiResponse::error(
-                    'REQUEST_IN_FLIGHT',
-                    'Cette opération est déjà en cours de traitement.',
-                    409,
                 );
             }
 
@@ -92,6 +122,12 @@ final class EnsureIdempotency
             );
         }
 
+        return $this->process($request, $next, $organizationId, $key);
+    }
+
+    /** Exécute la requête et mémorise sa réponse sous la clé. */
+    private function process(Request $request, Closure $next, string $organizationId, string $key): Response
+    {
         $response = $next($request);
 
         if ($response->getStatusCode() >= 500) {

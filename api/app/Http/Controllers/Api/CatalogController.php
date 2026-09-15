@@ -207,6 +207,12 @@ final class CatalogController
 
         $variant = ProductVariant::query()->findOrFail($variantId);
 
+        // Un prix propre à un point de vente change ce que ce point de vente
+        // facture au client : il suit la même portée que le reste.     [D-03]
+        if (isset($input['location_id']) && ! $this->context->canAccessLocation($input['location_id'])) {
+            return ApiResponse::error('NOT_FOUND', 'Point de vente introuvable.', 404);
+        }
+
         $this->prices->setPrice(
             $variant->id,
             Money::of($input['amount_minor'], $input['currency'] ?? $this->context->baseCurrency()),

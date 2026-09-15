@@ -104,6 +104,44 @@ final class OrderEndpointTest extends TestCase
     }
 
     #[Test]
+    public function a_sale_still_in_flight_is_refused(): void
+    {
+        DB::table('idempotency_keys')->insert([
+            'organization_id' => \App\Models\Organization::query()->first()->id,
+            'key' => 'POS1-0100',
+            'request_fingerprint' => 'peu-importe',
+            'status' => 'IN_PROGRESS',
+            'locked_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $this->sale('POS1-0100')->assertStatus(409)
+            ->assertJsonPath('error.code', 'REQUEST_IN_FLIGHT');
+    }
+
+    #[Test]
+    public function a_sale_abandoned_by_a_server_crash_can_be_retried(): void
+    {
+        // Le serveur est mort au milieu de l'encaissement : la ligne est
+        // restée « en cours ». Sans reprise, cette vente répondrait 409 pour
+        // toujours et la caisse la rejouerait sans fin depuis sa file.
+        DB::table('idempotency_keys')->insert([
+            'organization_id' => \App\Models\Organization::query()->first()->id,
+            'key' => 'POS1-0101',
+            'request_fingerprint' => 'peu-importe',
+            'status' => 'IN_PROGRESS',
+            'locked_at' => now()->subMinutes(10),
+            'created_at' => now()->subMinutes(10),
+        ]);
+
+        $this->sale('POS1-0101')->assertCreated();
+
+        $this->assertSame(1, Order::acrossAllOrganizations()->count());
+        $this->assertSame('COMPLETED', DB::table('idempotency_keys')
+            ->where('key', 'POS1-0101')->value('status'));
+    }
+
+    #[Test]
     public function a_sale_without_an_idempotency_key_is_refused(): void
     {
         $this->withToken($this->token)->postJson('/api/v1/orders', [

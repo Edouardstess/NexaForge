@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Support\Http\ApiResponse;
 use App\Support\Tenancy\OrgContext;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -27,6 +28,19 @@ final class ReportController
 {
     public function __construct(private readonly OrgContext $context) {}
 
+    /**
+     * Refuse un point de vente hors de la portée du membre.
+     *
+     * Introuvable et non interdit : un 403 confirmerait que cette boutique
+     * existe, ce que le reste de l'API se refuse à faire.               [D-03]
+     */
+    private function assertLocationAllowed(?string $locationId): void
+    {
+        if ($locationId !== null && ! $this->context->canAccessLocation($locationId)) {
+            throw new ModelNotFoundException('Point de vente introuvable.');
+        }
+    }
+
     public function daily(Request $request): JsonResponse
     {
         $input = $request->validate([
@@ -39,6 +53,7 @@ final class ReportController
         [$from, $to] = [$day->copy()->utc(), $day->copy()->endOfDay()->utc()];
 
         $locationId = $input['location_id'] ?? null;
+        $this->assertLocationAllowed($locationId);
         $currency = $this->context->baseCurrency();
 
         $sales = $this->scopedOrders($from, $to, $locationId)
@@ -121,6 +136,8 @@ final class ReportController
         $timezone = $this->context->timezone();
         $from = Carbon::parse($input['from'] ?? '-30 days', $timezone)->startOfDay()->utc();
         $to = Carbon::parse($input['to'] ?? 'today', $timezone)->endOfDay()->utc();
+
+        $this->assertLocationAllowed($input['location_id'] ?? null);
 
         $rows = $this->scopedOrders($from, $to, $input['location_id'] ?? null)
             ->join('order_items as i', 'i.order_id', '=', 'o.id')
@@ -213,10 +230,16 @@ final class ReportController
             ->whereIn('o.status', ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'])
             ->whereBetween('o.taken_at', [$from, $to]);
 
+        // Deux filtres qui s'ajoutent, jamais l'un OU l'autre. Un `elseif` ici
+        // laissait un membre restreint à une boutique lire celle d'à côté en
+        // nommant simplement son identifiant : la portée du membership était
+        // sautée dès qu'une location était fournie.
+        if (! $this->context->hasFullLocationAccess()) {
+            $query->whereIn('o.location_id', $this->context->locationIds());
+        }
+
         if ($locationId !== null) {
             $query->where('o.location_id', $locationId);
-        } elseif (! $this->context->hasFullLocationAccess()) {
-            $query->whereIn('o.location_id', $this->context->locationIds());
         }
 
         return $query;
