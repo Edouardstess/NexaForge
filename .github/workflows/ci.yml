@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Lint, migrations, tests
+    runs-on: ubuntu-latest
+
+    services:
+      # PostgreSQL 16, jamais SQLite : les index partiels, les contraintes
+      # EXCLUDE, les règles DO INSTEAD NOTHING et le trigger différé du ledger
+      # n'existent que là. Un vert sur SQLite ne prouverait rien.   [D-06, D-10]
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nexa
+          POSTGRES_PASSWORD: nexa
+          POSTGRES_DB: nexa_test
+        # Le port hôte est 5433 et non 5432 : c'est celui que `api/phpunit.xml`
+        # code en dur. La CI se plie au dépôt, pas l'inverse — un fichier de
+        # test modifié pour la CI finirait par diverger du poste de travail.
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U nexa -d nexa_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # Laravel ne réécrit pas une variable déjà présente dans l'environnement :
+      # ces trois-là gagnent donc sur le `.env` copié plus bas, et la CI n'a
+      # besoin ni de Redis ni d'un worker.
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo, pdo_pgsql, pgsql, mbstring, dom, curl, libxml, xml, zip, fileinfo, tokenizer
+          coverage: none
+          ini-values: error_reporting=E_ALL
+
+      - name: Composer cache directory
+        id: composer-cache
+        working-directory: api
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Composer cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php8.3-${{ hashFiles('api/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php8.3-
+
+      - name: Install PHP dependencies
+        working-directory: api
+        run: composer install --prefer-dist --no-interaction --no-progress --no-ansi
+
+      - name: Prepare environment
+        working-directory: api
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+
+      # Le vrai test de la migration, c'est qu'une base VIDE converge sans
+      # aide : pas de `schema:load`, pas de dump SQL rejoué à côté. Si cette
+      # étape passe, un serveur neuf chez un commerçant passera aussi.
+      - name: Run migrations on an empty database
+        working-directory: api
+        env:
+          DB_DATABASE: nexa_test
+        run: php artisan migrate --force --ansi
+
+      - name: Check that migrations left nothing pending
+        working-directory: api
+        env:
+          DB_DATABASE: nexa_test
+        run: |
+          php artisan migrate:status --ansi
+          test -z "$(php artisan migrate:status --no-ansi | grep -i 'Pending' || true)"
+
+      - name: PHPUnit
+        working-directory: api
+        run: ./vendor/bin/phpunit --colors=never
+
+      # `php -l` attrape ce que les tests ne voient jamais : un fichier qui
+      # n'est chargé par aucun chemin de test reste cassé jusqu'en production.
+      - name: PHP syntax check
+        run: |
+          find api/app api/database api/routes api/tests -name '*.php' -type f -print0 \
+            | xargs -0 -r -n1 -P4 php -l
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # La caisse n'a pas d'étape de build : le fichier servi au navigateur est
+      # le fichier du dépôt. Rien d'autre ne relira sa syntaxe avant le client.
+      - name: POS syntax check
+        run: |
+          for f in web/pos/*.js; do
+            node --check "$f"
+          done
